@@ -232,9 +232,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, background: '#111' }}>
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
-        <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
+      <div style={{ position: 'relative', flex: 1, background: '#111' }}>
+        <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
+        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 16, right: 16, width: 240, height: 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
       </div>
       <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #ddd' }}>
         <strong style={{ flex: 1 }}>{status}</strong>
