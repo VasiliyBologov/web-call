@@ -78,7 +78,7 @@ stages:
               cat > "$COMPOSE_OUT" << 'EOF'
               version: '3.8'
               services:
-                frontend:
+                app:
                   image: ${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
                   depends_on:
                     - backend
