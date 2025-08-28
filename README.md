@@ -87,6 +87,7 @@ npm run dev
 - `VITE_API_BASE` — базовый URL API (например, `https://example.video`).
 - `VITE_WS_BASE` — базовый WS/WSS (например, `wss://example.video`).
 - `VITE_ICE_JSON` — JSON массив ICE серверов (см. пример ниже).
+- `VITE_ICE_TRANSPORT_POLICY` — политика транспорта ICE: `all` (по умолчанию) или `relay` (только через TURN). Полезно в жёстко ограниченных сетях.
 
 
 ## 6) Настройка ICE (STUN/TURN)
@@ -231,3 +232,66 @@ az webapp config appsettings set -g my-rg-webcall -n my-webcall-app --settings \
 - В нашем azure-pipelines.yml переменная `acrLoginServer` формируется как `$(acrName).azurecr.io` — это верно для Public Azure. В суверенных облаках используйте фактическое значение `loginServer` из `az acr show`.
 - Можно включить ACR Admin user и использовать логин/пароль, но рекомендуемый способ — Managed Identity + роль `AcrPull` (как в скрипте).
 - Для PUBLIC_BASE_URL (абсолютные ссылки) задайте переменную окружения в Web App или в compose, если нужно.
+
+
+## 12) FAQ / Troubleshooting: «ICE: failed» — что это и почему происходит?
+Что означает это сообщение?
+- В интерфейсе комнаты (frontend/src/pages/Room.tsx) статус соединения берётся из `pc.iceConnectionState`. Когда вы видите «ICE: failed», это значит, что ICE‑агент WebRTC не смог найти ни одной рабочей пары кандидатов (пути связи) между пирами. Соединение не установлено или разорвано.
+
+Почему это происходит чаще всего:
+- Отсутствует TURN‑сервер. STUN даёт только публичный адрес (srflx) и часто достаточен в простых NAT, но при симметричном NAT или строгих фаерволах нужен TURN (ретрансляция через внешний сервер).
+- Заблокирован UDP (порт 3478/медиапорты) корпоративной сетью/фаерволом. Если разрешён только TCP/443, нужен TURN по TCP/TLS (urls вида `turn:...transport=tcp` и `turns:...`).
+- Неверные учётные данные/realm для TURN, сертификат/TLS для `turns:` не совпадает с хостнеймом, либо DNS недоступен.
+- Неправильная конфигурация ICE на клиенте (пустой/битый JSON, опечатка в `VITE_ICE_JSON`).
+- TURN‑сервер за NAT без `external-ip`/портов, либо закрыт диапазон медиапортов.
+
+Где настраивается ICE в этом репозитории:
+- frontend/src/config.ts — строит `ICE_SERVERS` из переменной окружения `VITE_ICE_JSON`. Если она пуста/`[]`, используются дефолтные публичные STUN‑сервера Google (этого может быть недостаточно в проде).
+- docker-compose.yml — аргумент сборки `VITE_ICE_JSON` для фронтенда. Укажите здесь ваш STUN/TURN.
+
+Пример рабочей конфигурации `VITE_ICE_JSON` (STUN + TURN с UDP/TCP/TLS):
+```json
+[
+  { "urls": ["stun:turn.example.com:3478"] },
+  { "urls": [
+      "turn:turn.example.com:3478?transport=udp",
+      "turn:turn.example.com:3478?transport=tcp",
+      "turns:turn.example.com:5349?transport=tcp"
+    ],
+    "username": "user",
+    "credential": "secret"
+  }
+]
+```
+Подставьте ваш домен/хост, логин/пароль. Для сетей, где разрешён только 443/TLS, можно прокинуть `turns` через 443 (см. заметку ниже про coturn).
+
+Быстрый чек‑лист диагностики:
+- Откройте chrome://webrtc-internals (Chrome) и DevTools → Console. Посмотрите события `iceConnectionState` и кандидаты. Если все candidate‑пары завершаются `failed`, почти наверняка нужен TURN.
+- Протестируйте ваши ICE‑серверы на странице Trickle ICE: https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/
+- Проверьте доступность TURN:
+  - UDP/TCP 3478 и TLS 5349 (либо 443 для TLS) со стороны клиента (фаервол/прокси).
+  - DNS и сертификат (для `turns:` CN/SAN должны совпадать с хостом).
+- Убедитесь, что `VITE_ICE_JSON` действительно применён: в прод‑сборке откройте DevTools → Network → посмотрите значение, зашитое в бандл (или логируйте `ICE_SERVERS`).
+- Для getUserMedia браузерам нужен https или http://localhost. Отсутствие https не вызывает «ICE: failed», но помешает включить камеру/микрофон и вы не дойдёте до ICE.
+
+Мини‑гайд по coturn (пример):
+- Базовые опции в turnserver.conf:
+  - `listening-port=3478`
+  - `tls-listening-port=5349` (или 443, если требуется обход корпоративных ограничений)
+  - `fingerprint`
+  - `lt-cred-mech`
+  - `realm=example.com`
+  - `user=user:secret` (или `userdb` для продакшена)
+  - `cert=/path/fullchain.pem` и `pkey=/path/privkey.pem` для TLS
+  - Если сервер за NAT: `external-ip=<PUBLIC_IP>`
+  - Ограничьте медиапорты: `min-port=49152`, `max-port=49999` и откройте их в фаерволе
+
+Типовые решения, если видите «ICE: failed»:
+- Добавьте/включите TURN и укажите его в `VITE_ICE_JSON` (UDP + TCP + TLS).
+- Разрешите исходящий UDP и/или обеспечьте `turns:` на 443/TLS как fallback.
+- Проверьте корректность логина/пароля/realm для TURN и актуальность сертификата.
+- Проверьте, что оба клиента используют один и тот же публичный адрес сайта/домен (особенно при работе за прокси/туннелями).
+
+Дополнительно: клиент автоматически пытается выполнить ICE‑restart при сбоях ("ICE: failed" или длительное "disconnected"). Если вы находитесь в жёстко ограниченной сети, можно принудительно включить режим только через TURN, задав `VITE_ICE_TRANSPORT_POLICY=relay` (по умолчанию `all`). Это снижает вероятность "ICE: failed", но требует корректно настроенного TURN.
+
+Если всё равно не работает — соберите логи из chrome://webrtc-internals и приложите конфигурацию `VITE_ICE_JSON`; по логам можно увидеть, какие кандидаты формируются и на чём срывается проверка связности.

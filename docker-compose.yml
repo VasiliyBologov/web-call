@@ -18,6 +18,8 @@ services:
         # Provide your ICE servers JSON here or leave empty [] for LAN/local tests
         VITE_ICE_JSON: |
           []
+        # Optional: force TURN-only routing in restrictive networks ("relay" or "all")
+        VITE_ICE_TRANSPORT_POLICY: ${VITE_ICE_TRANSPORT_POLICY:-}
     depends_on:
       - backend
     ports:

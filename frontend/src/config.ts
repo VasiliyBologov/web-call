@@ -48,3 +48,9 @@ export function api(path: string) {
 export function wsUrl(path: string) {
   return `${WS_BASE}${path}`
 }
+
+// ICE transport policy: "all" (default) or "relay" (TURN-only)
+const RAW_POLICY = (import.meta.env.VITE_ICE_TRANSPORT_POLICY as string | undefined)?.trim().toLowerCase()
+export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = (RAW_POLICY === 'relay' || RAW_POLICY === 'all')
+  ? (RAW_POLICY as RTCIceTransportPolicy)
+  : 'all'

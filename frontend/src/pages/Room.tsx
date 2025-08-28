@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ICE_SERVERS, wsUrl } from '../config'
+import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY } from '../config'
 
 type WSMsg =
   | { type: 'room-info'; peers: string[]; max: number }
@@ -29,6 +29,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerIdRef = useRef<string>(rid())
   const roleRef = useRef<'offerer' | 'answerer' | null>(null)
+  const iceRetriesRef = useRef(0)
+  const disconnectedTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     let closed = false
@@ -45,7 +47,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
 
       setStatus('создание peer connection…')
-      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+      const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: ICE_TRANSPORT_POLICY })
       pcRef.current = pc
 
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
@@ -57,7 +59,31 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
       }
       pc.oniceconnectionstatechange = () => {
-        setStatus(`ICE: ${pc.iceConnectionState}`)
+        const state = pc.iceConnectionState
+        setStatus(`ICE: ${state}`)
+
+        // Clear timer on healthy states
+        if (state === 'connected' || state === 'completed') {
+          iceRetriesRef.current = 0
+          if (disconnectedTimerRef.current) {
+            window.clearTimeout(disconnectedTimerRef.current)
+            disconnectedTimerRef.current = null
+          }
+        }
+
+        if (state === 'disconnected') {
+          // If stays disconnected for >5s, attempt ICE restart
+          if (disconnectedTimerRef.current) {
+            window.clearTimeout(disconnectedTimerRef.current)
+          }
+          disconnectedTimerRef.current = window.setTimeout(() => {
+            if (pcRef.current && pcRef.current.iceConnectionState === 'disconnected') {
+              attemptIceRestart()
+            }
+          }, 5000)
+        } else if (state === 'failed') {
+          attemptIceRestart()
+        }
       }
       pc.onicecandidate = ev => {
         if (ev.candidate) {
@@ -131,6 +157,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         send({ type: 'bye', peerId: peerIdRef.current })
       } catch {}
       try { wsRef.current?.close() } catch {}
+      if (disconnectedTimerRef.current) {
+        window.clearTimeout(disconnectedTimerRef.current)
+        disconnectedTimerRef.current = null
+      }
+      iceRetriesRef.current = 0
       pcRef.current?.getSenders().forEach(s => s.track?.stop())
       localStreamRef.current?.getTracks().forEach(t => t.stop())
       pcRef.current?.close()
@@ -138,12 +169,36 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
-  async function makeOffer() {
+  async function makeOffer(iceRestart: boolean = false) {
     if (!pcRef.current) return
-    const offer = await pcRef.current.createOffer()
+    const offer = await pcRef.current.createOffer(iceRestart ? { iceRestart: true } : undefined)
     await pcRef.current.setLocalDescription(offer)
     send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
-    setStatus('подключение…')
+    setStatus(iceRestart ? 'переподключение…' : 'подключение…')
+  }
+
+  async function attemptIceRestart() {
+    const pc = pcRef.current
+    if (!pc) return
+    if (iceRetriesRef.current >= 2) return
+    iceRetriesRef.current += 1
+    try {
+      // Try spec API if present
+      if (typeof (pc as any).restartIce === 'function') {
+        (pc as any).restartIce()
+      }
+    } catch {}
+
+    if (roleRef.current === 'offerer') {
+      try {
+        await makeOffer(true)
+      } catch (e) {
+        console.warn('ICE restart offer failed', e)
+      }
+    } else {
+      // For answerer, wait for remote restart; still update status
+      setStatus('переподключение…')
+    }
   }
 
   function send(obj: any) {
