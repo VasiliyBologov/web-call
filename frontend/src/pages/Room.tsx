@@ -37,16 +37,38 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const [needsPlaybackResume, setNeedsPlaybackResume] = useState(false)
   const cleanupPlaybackResumeRef = useRef<(() => void) | null>(null)
+  const pendingCandidatesRef = useRef<any[]>([])
 
   useEffect(() => {
     let closed = false
 
     async function start() {
       setStatus('запрос устройств…')
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
-      })
+      const videoConstraints: MediaTrackConstraints = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: videoConstraints,
+        })
+      } catch (err: any) {
+        // Firefox may throw NotFoundError if one of the devices (mic/cam) is missing.
+        if (err && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError' || err.name === 'OverConstrainedError')) {
+          try {
+            // Try audio-only
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          } catch (err2: any) {
+            try {
+              // Try video-only
+              stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+            } catch (err3: any) {
+              throw err
+            }
+          }
+        } else {
+          throw err
+        }
+      }
       localStreamRef.current = stream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
@@ -144,6 +166,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         } else if (msg.type === 'offer') {
           if (!pcRef.current) return
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+          await flushPendingCandidates()
           const answer = await pcRef.current.createAnswer()
           await pcRef.current.setLocalDescription(answer)
           send({ type: 'answer', peerId: peerIdRef.current, sdp: answer })
@@ -151,11 +174,21 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         } else if (msg.type === 'answer') {
           if (!pcRef.current) return
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+          await flushPendingCandidates()
           setStatus('в сети')
         } else if (msg.type === 'candidate') {
-          if (!pcRef.current) return
+          const pc = pcRef.current
+          if (!pc) return
+          const c = msg.candidate
+          if (isEmptyCandidate(c)) {
+            return
+          }
           try {
-            await pcRef.current.addIceCandidate(msg.candidate)
+            if (!pc.remoteDescription) {
+              pendingCandidatesRef.current.push(c)
+              return
+            }
+            await pc.addIceCandidate(c)
           } catch (e) {
             console.warn('Failed to add ICE', e)
           }
@@ -296,6 +329,25 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       setupPlaybackResumeOnce()
       console.warn('Remote media play() blocked on', trigger, e)
     }
+  }
+
+  async function flushPendingCandidates() {
+    const pc = pcRef.current
+    if (!pc || !pc.remoteDescription) return
+    const q = pendingCandidatesRef.current
+    while (q.length) {
+      const cand = q.shift()
+      if (!cand || !cand.candidate) continue
+      try {
+        await pc.addIceCandidate(cand)
+      } catch (e) {
+        console.warn('Flush ICE candidate failed', e)
+      }
+    }
+  }
+
+  function isEmptyCandidate(c: any) {
+    return !c || !c.candidate || c.candidate === ''
   }
 
   async function makeOffer(iceRestart: boolean = false) {
