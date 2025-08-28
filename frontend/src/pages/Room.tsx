@@ -23,6 +23,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([])
+  const [sinkId, setSinkId] = useState<string | null>(() => localStorage.getItem('audioSinkId'))
+  const [outputSupported, setOutputSupported] = useState<boolean>(() => typeof (HTMLMediaElement.prototype as any).setSinkId === 'function')
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -52,10 +55,18 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
 
-      pc.ontrack = ev => {
+      pc.ontrack = async ev => {
         const [remoteStream] = ev.streams
         if (remoteVideoRef.current && remoteStream) {
           remoteVideoRef.current.srcObject = remoteStream
+          try {
+            const el: any = remoteVideoRef.current
+            if (outputSupported && el.setSinkId) {
+              await el.setSinkId(sinkId ?? 'default')
+            }
+          } catch (e) {
+            console.warn('setSinkId failed', e)
+          }
         }
       }
       pc.oniceconnectionstatechange = () => {
@@ -169,6 +180,55 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
+  // Enumerate audio output devices and react to changes
+  useEffect(() => {
+    let mounted = true
+    async function ensureLabels() {
+      try {
+        // Request mic briefly so labels are available in some browsers
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+        s.getTracks().forEach(t => t.stop())
+      } catch {}
+    }
+    async function refreshOutputs() {
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices()
+        const outs = list.filter(d => d.kind === 'audiooutput')
+        if (!mounted) return
+        setOutputs(outs)
+      } catch (e) {
+        console.warn('enumerateDevices failed', e)
+      }
+    }
+
+    // Initial detection
+    ensureLabels().finally(refreshOutputs)
+
+    const onChange = () => refreshOutputs()
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange)
+    return () => {
+      mounted = false
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onChange)
+    }
+  }, [])
+
+  async function applySink(id: string | null) {
+    const el = remoteVideoRef.current as any
+    if (!el) return
+    if (!outputSupported || !el.setSinkId) return
+    try {
+      await el.setSinkId(id ?? 'default')
+      setSinkId(id)
+      if (id) {
+        localStorage.setItem('audioSinkId', id)
+      } else {
+        localStorage.removeItem('audioSinkId')
+      }
+    } catch (e) {
+      console.warn('applySink failed', e)
+    }
+  }
+
   async function makeOffer(iceRestart: boolean = false) {
     if (!pcRef.current) return
     const offer = await pcRef.current.createOffer(iceRestart ? { iceRestart: true } : undefined)
@@ -238,6 +298,29 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       </div>
       <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #ddd' }}>
         <strong style={{ flex: 1 }}>{status}</strong>
+        {outputSupported ? (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>Вывод:</span>
+              <select
+                style={{ padding: 8, fontSize: 14 }}
+                value={sinkId ?? ''}
+                onChange={e => applySink(e.target.value || null)}
+              >
+                <option value="">Системный по умолчанию</option>
+                {outputs.map(d => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || 'Устройство вывода'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        ) : (
+          <span style={{ color: '#666' }} title="Ваш браузер не позволяет выбирать устройство вывода">
+            Выбор вывода недоступен в этом браузере
+          </span>
+        )}
         <button style={btn} onClick={() => navigator.clipboard.writeText(link)}>Скопировать ссылку</button>
         <button style={btn} onClick={toggleMic}>{micOn ? 'Микрофон выкл' : 'Микрофон вкл'}</button>
         <button style={btn} onClick={toggleCam}>{camOn ? 'Камера выкл' : 'Камера вкл'}</button>
