@@ -198,7 +198,7 @@ ACR (Azure Container Registry) — это приватный реестр Docker
 Как настроить Azure DevOps pipeline:
 - В Azure DevOps → Project Settings → Service connections создайте ARM Service connection к вашей подписке/Resource Group. Запомните имя (например, `My-Azure-Conn`).
 - В Variables пайплайна укажите:
-  - `azureSubscription` = имя Service Connection (например, `My-Azure-Conn`)
+  - `AZURE_SERVICE_CONNECTION` = имя ARM Service Connection (AzureRM) (например, `My-Azure-Conn`)
   - `resourceGroup` = ваш RG (например, `my-rg-webcall`)
   - `acrName` = имя ACR (например, `mywebcallacr`)
   - `webAppName` = имя Web App (например, `my-webcall-app`)

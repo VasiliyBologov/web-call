@@ -9,9 +9,10 @@ resources:
 - repo: self
 
 variables:
-  # Set to the name or ID of your Azure DevOps ARM service connection.
-  # Recommended: define a pipeline variable named AZURE_SERVICE_CONNECTION in Azure DevOps UI.
-  azureSubscription: '4a6af8e9-2ad7-403c-95c8-19e402b29025'
+  # Set to the name or ID of your Azure DevOps ARM (Azure Resource Manager) service connection.
+  # Recommended: define a pipeline variable named AZURE_SERVICE_CONNECTION in Azure DevOps UI and set it to your ARM connection.
+  # IMPORTANT: Do NOT use a Docker Registry service connection here. It must be of type AzureRM.
+  azureSubscription: '$(AZURE_SERVICE_CONNECTION)'
   acrName: 'giterappregistry'
   webAppName: 'web-calls'
   resourceGroup: 'GiterApps'
