@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Provide your ICE servers JSON here or leave empty [] for LAN/local tests
+        VITE_ICE_JSON: |
+          []
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
