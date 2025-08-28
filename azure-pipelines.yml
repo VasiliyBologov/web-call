@@ -84,6 +84,8 @@ stages:
                     - backend
                   ports:
                     - '80:80'
+                  expose:
+                    - '80'
                 backend:
                   image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
                   environment:
