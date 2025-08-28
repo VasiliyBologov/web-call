@@ -17,13 +17,27 @@ const API_BASE = `${proto}://${apiHostPort}`
 const WS_BASE = `${wsProto}://${apiHostPort}`
 
 // Only ICE can be injected via build-time env; API/WS are resolved at runtime from window.location.
-export const ICE_JSON = import.meta.env.VITE_ICE_JSON || '[]'
+// Provide a sensible default STUN server so two peers can connect in most NAT scenarios out of the box.
+const DEFAULT_ICE_JSON = JSON.stringify([
+  { urls: [
+    'stun:stun.l.google.com:19302',
+    'stun:stun1.l.google.com:19302',
+    'stun:stun2.l.google.com:19302',
+    'stun:stun3.l.google.com:19302',
+    'stun:stun4.l.google.com:19302'
+  ] }
+])
+
+const RAW_ICE = import.meta.env.VITE_ICE_JSON as string | undefined
+export const ICE_JSON = (!RAW_ICE || RAW_ICE.trim() === '' || RAW_ICE.trim() === '[]' || RAW_ICE.trim().toLowerCase() === 'null')
+  ? DEFAULT_ICE_JSON
+  : RAW_ICE
 
 export const ICE_SERVERS: RTCIceServer[] = (() => {
   try {
     return JSON.parse(ICE_JSON)
   } catch {
-    return []
+    return JSON.parse(DEFAULT_ICE_JSON)
   }
 })()
 
