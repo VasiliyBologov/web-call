@@ -46,7 +46,8 @@ async def create_room():
     # Accept only proper absolute URLs for PUBLIC_BASE_URL; ignore placeholders or invalid values
     if base_url:
         base_url = base_url.strip()
-        if not base_url.lower().startswith(("http://", "https://")) or base_url.startswith("${"):
+        has_placeholder = "${" in base_url or ":-" in base_url
+        if has_placeholder or not base_url.lower().startswith(("http://", "https://")):
             base_url = None
         else:
             base_url = base_url.rstrip("/")
