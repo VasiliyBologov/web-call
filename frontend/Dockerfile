@@ -16,9 +16,10 @@ ENV VITE_WS_BASE=${VITE_WS_BASE}
 ENV VITE_ICE_JSON=${VITE_ICE_JSON}
 RUN npm run build
 
-FROM node:20-alpine AS runner
-WORKDIR /app
-COPY --from=build /app/dist ./dist
-RUN npm i -g vite
-EXPOSE 5173
-CMD ["vite", "preview", "--host", "0.0.0.0", "--port", "5173"]
+FROM nginx:alpine AS runner
+# Copy built static files to nginx html directory
+COPY --from=build /app/dist /usr/share/nginx/html
+# Nginx config for SPA + API/WS proxy to backend service
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

@@ -78,18 +78,18 @@ stages:
               cat > "$COMPOSE_OUT" << 'EOF'
               version: '3.8'
               services:
-                backend:
-                  image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
-                  environment:
-                    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-                  ports:
-                    - '8000:8000'
                 frontend:
                   image: ${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
                   depends_on:
                     - backend
                   ports:
-                    - '5173:5173'
+                    - '80:80'
+                backend:
+                  image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+                  environment:
+                    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+                  expose:
+                    - '8000'
               EOF
               # Substitute variables for compose
               sed -i "s#\${ACR_LOGIN_SERVER}#$(acrLoginServer)#g" "$COMPOSE_OUT"
@@ -122,4 +122,4 @@ stages:
                     resourceGroupName: '$(resourceGroup)'
                     multicontainerConfigFile: '$(Pipeline.Workspace)/drop/docker-compose.azure.yaml'
                     # Optionally set app settings (e.g., WEBSITES_PORT) if needed for your frontend port
-                    appSettings: -DOCKER_REGISTRY_SERVER_URL https://$(acrLoginServer) -WEBSITES_ENABLE_APP_SERVICE_STORAGE true -WEBSITES_PORT 5173
+                    appSettings: -DOCKER_REGISTRY_SERVER_URL https://$(acrLoginServer) -WEBSITES_ENABLE_APP_SERVICE_STORAGE true -WEBSITES_PORT 80

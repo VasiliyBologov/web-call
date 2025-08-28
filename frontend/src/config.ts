@@ -8,8 +8,13 @@ const rawHost = isBrowser ? window.location.hostname : 'localhost'
 const isDockerBridgeIP = (h: string) => /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)
 const apiHost = isDockerBridgeIP(rawHost) ? 'localhost' : rawHost
 
-const API_BASE = `${proto}://${apiHost}:8000`
-const WS_BASE = `${wsProto}://${apiHost}:8000`
+// Resolve API/WS base dynamically:
+// - Dev (Vite on 5173): use :8000 for backend
+// - Prod (App Service behind 80/443): same host, default port (no explicit :8000)
+const port = isBrowser ? window.location.port : ''
+const apiHostPort = port === '5173' ? `${apiHost}:8000` : rawHost
+const API_BASE = `${proto}://${apiHostPort}`
+const WS_BASE = `${wsProto}://${apiHostPort}`
 
 // Only ICE can be injected via build-time env; API/WS are resolved at runtime from window.location.
 export const ICE_JSON = import.meta.env.VITE_ICE_JSON || '[]'
