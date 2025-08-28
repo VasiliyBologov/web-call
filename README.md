@@ -167,3 +167,67 @@ README.md
   - Настроить локальный HTTPS (nginx/traefik с самоподписанным сертификатом).
   - Временно запустить Chrome с флагом: `--unsafely-treat-insecure-origin-as-secure="http://<IP_хоста>:5173"` (только для тестов).
   - Использовать туннель (ngrok/cloudflared) для получения https‑URL.
+
+
+
+## 11) Azure: что такое ACR и как его создать
+ACR (Azure Container Registry) — это приватный реестр Docker-образов в Azure. Наш pipeline (azure-pipelines.yml) собирает два образа (backend и frontend) и публикует их в ACR, после чего много‑контейнерный Azure Web App скачивает эти образы и запускает их.
+
+Когда нужен ACR:
+- Если вы деплоите в Azure Web App for Containers и хотите хранить образы приватно в Azure.
+- Pipeline в этом репозитории рассчитывает, что у вас есть ACR (переменная acrName) и Web App.
+
+Быстрый старт (Azure CLI, 1 команда):
+1) Установите и войдите в Azure CLI: `az login`, выберите подписку: `az account set --subscription "<SUBSCRIPTION_ID_OR_NAME>"`.
+2) Запустите скрипт из репозитория (создаст Resource Group, ACR, App Service Plan и Web App):
+   ```bash
+   ./scripts/azure_create_acr_and_webapp.sh \
+     --location westeurope \
+     --resource-group my-rg-webcall \
+     --acr-name mywebcallacr \
+     --plan-name my-webcall-plan \
+     --plan-sku S1 \
+     --webapp-name my-webcall-app
+   ```
+   Скрипт:
+   - создаст ACR (Basic);
+   - создаст Linux App Service Plan и Web App;
+   - включит system-assigned Managed Identity у Web App и выдаст ей роль AcrPull на ACR;
+   - выведет значения для переменных pipeline.
+
+Как настроить Azure DevOps pipeline:
+- В Azure DevOps → Project Settings → Service connections создайте ARM Service connection к вашей подписке/Resource Group. Запомните имя (например, `My-Azure-Conn`).
+- В Variables пайплайна укажите:
+  - `azureSubscription` = имя Service Connection (например, `My-Azure-Conn`)
+  - `resourceGroup` = ваш RG (например, `my-rg-webcall`)
+  - `acrName` = имя ACR (например, `mywebcallacr`)
+  - `webAppName` = имя Web App (например, `my-webcall-app`)
+- Запустите пайплайн. Он соберёт образы с помощью ACR Tasks (`az acr build`) и задеплоит docker-compose в ваш Web App.
+
+Альтернативно: явные команды Azure CLI (без скрипта)
+```bash
+# 1) RG
+az group create -n my-rg-webcall -l westeurope
+# 2) ACR (Basic)
+az acr create -n mywebcallacr -g my-rg-webcall --sku Basic
+# 3) Plan (Linux)
+az appservice plan create -g my-rg-webcall -n my-webcall-plan --is-linux --sku S1
+# 4) Web App (Linux)
+az webapp create -g my-rg-webcall -p my-webcall-plan -n my-webcall-app --runtime "PYTHON:3.11"
+# 5) Managed Identity
+az webapp identity assign -g my-rg-webcall -n my-webcall-app
+PRINCIPAL_ID=$(az webapp identity show -g my-rg-webcall -n my-webcall-app --query principalId -o tsv)
+ACR_ID=$(az acr show -n mywebcallacr --query id -o tsv)
+az role assignment create --assignee "$PRINCIPAL_ID" --scope "$ACR_ID" --role "AcrPull"
+# 6) App settings (URL реестра)
+ACR_LOGIN_SERVER=$(az acr show -n mywebcallacr --query loginServer -o tsv)
+az webapp config appsettings set -g my-rg-webcall -n my-webcall-app --settings \
+  WEBSITES_ENABLE_APP_SERVICE_STORAGE=true \
+  DOCKER_REGISTRY_SERVER_URL="https://$ACR_LOGIN_SERVER"
+```
+
+Полезные заметки:
+- Имена ACR и Web App должны быть глобально уникальны.
+- В нашем azure-pipelines.yml переменная `acrLoginServer` формируется как `$(acrName).azurecr.io` — это верно для Public Azure. В суверенных облаках используйте фактическое значение `loginServer` из `az acr show`.
+- Можно включить ACR Admin user и использовать логин/пароль, но рекомендуемый способ — Managed Identity + роль `AcrPull` (как в скрипте).
+- Для PUBLIC_BASE_URL (абсолютные ссылки) задайте переменную окружения в Web App или в compose, если нужно.

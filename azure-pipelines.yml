@@ -9,7 +9,9 @@ resources:
 - repo: self
 
 variables:
-  azureSubscription: '79391428-3302-4885-804c-b1ee4fe7ba36'
+  # Set to the name or ID of your Azure DevOps ARM service connection.
+  # Recommended: define a pipeline variable named AZURE_SERVICE_CONNECTION in Azure DevOps UI.
+  azureSubscription: '4a6af8e9-2ad7-403c-95c8-19e402b29025'
   acrName: 'giterappregistry'
   webAppName: 'web-calls'
   resourceGroup: 'GiterApps'
@@ -19,6 +21,7 @@ variables:
   containerRegistry: 'giterappregistry.azurecr.io'
   dockerfilePath: '$(Build.SourcesDirectory)/backend/Dockerfile'
   tag: '$(Build.BuildId)'
+  imageTag: '$(Build.BuildId)'
   acrLoginServer: '$(acrName).azurecr.io'
   backendImageName: 'web-call-backend'
   frontendImageName: 'web-call-frontend'
