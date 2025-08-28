@@ -4,6 +4,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    environment:
+      # Optional: set in .env as PUBLIC_BASE_URL=http://<HOST_LAN_IP>:5173 to generate absolute room links for LAN
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
     ports:
       - "8000:8000"
 
