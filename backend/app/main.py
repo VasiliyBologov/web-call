@@ -43,6 +43,13 @@ async def health():
 async def create_room():
     room = await store.create_room(max_participants=MAX_PARTICIPANTS_DEFAULT)
     base_url = os.getenv("PUBLIC_BASE_URL")
+    # Accept only proper absolute URLs for PUBLIC_BASE_URL; ignore placeholders or invalid values
+    if base_url:
+        base_url = base_url.strip()
+        if not base_url.lower().startswith(("http://", "https://")) or base_url.startswith("${"):
+            base_url = None
+        else:
+            base_url = base_url.rstrip("/")
     url_path = f"/r/{room.token}"
     url = f"{base_url}{url_path}" if base_url else url_path
     return CreateRoomResponse(token=room.token, url=url, ttlSeconds=7 * 24 * 3600)
