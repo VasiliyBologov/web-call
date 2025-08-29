@@ -216,61 +216,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       // Ensure only active tab sends
       applyActiveState()
 
-      pc.ontrack = async ev => {
-        const [remoteStream] = ev.streams
-        if (remoteStream) {
-          remoteStreamRef.current = remoteStream
-        }
-        const el = remoteVideoRef.current as HTMLVideoElement | null
-        if (el && remoteStream) {
-          el.srcObject = remoteStream
-          ;(el as any).muted = false
-          try {
-            const anyEl: any = el
-            if (outputSupported && anyEl.setSinkId) {
-              await anyEl.setSinkId(sinkId ?? 'default')
-            }
-          } catch (e) {
-            console.warn('setSinkId failed', e)
-          }
-          tryPlayRemote('ontrack')
-          if (ev.track) {
-            ev.track.onunmute = () => tryPlayRemote('track-unmute')
-          }
-        }
-      }
-      pc.oniceconnectionstatechange = () => {
-        const state = pc.iceConnectionState
-        setStatus(`ICE: ${state}`)
-
-        // Clear timer on healthy states
-        if (state === 'connected' || state === 'completed') {
-          iceRetriesRef.current = 0
-          if (disconnectedTimerRef.current) {
-            window.clearTimeout(disconnectedTimerRef.current)
-            disconnectedTimerRef.current = null
-          }
-        }
-
-        if (state === 'disconnected') {
-          // If stays disconnected for >5s, attempt ICE restart
-          if (disconnectedTimerRef.current) {
-            window.clearTimeout(disconnectedTimerRef.current)
-          }
-          disconnectedTimerRef.current = window.setTimeout(() => {
-            if (pcRef.current && pcRef.current.iceConnectionState === 'disconnected') {
-              attemptIceRestart()
-            }
-          }, 5000)
-        } else if (state === 'failed') {
-          attemptIceRestart()
-        }
-      }
-      pc.onicecandidate = ev => {
-        if (ev.candidate) {
-          send({ type: 'candidate', peerId: peerIdRef.current, candidate: ev.candidate })
-        }
-      }
+      wirePcHandlers(pc)
 
       setStatus('проверка ссылки…')
       try {
@@ -317,7 +263,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           if (!pcRef.current) return
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
           await flushPendingCandidates()
-          const answer = await pcRef.current.createAnswer()
+          let answer = await pcRef.current.createAnswer()
+          if (isSafariLike() && answer.sdp) {
+            answer = { ...answer, sdp: preferH264(answer.sdp) }
+          }
           await pcRef.current.setLocalDescription(answer)
           send({ type: 'answer', peerId: peerIdRef.current, sdp: answer })
           setStatus('в сети')
@@ -522,6 +471,150 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  // --- WebRTC helpers: TURN detection, SDP munging (H.264), handler wiring, relay fallback ---
+  function hasTurnConfigured(): boolean {
+    try {
+      return (ICE_SERVERS || []).some(s => {
+        const urls: any = (s as any)?.urls
+        const list: string[] = Array.isArray(urls) ? urls as any : (typeof urls === 'string' ? [urls] : [])
+        return list.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')))
+      })
+    } catch {
+      return false
+    }
+  }
+
+  function isSafariLike(): boolean {
+    const ua = navigator.userAgent || ''
+    const isIOS = /iPhone|iPad|iPod/i.test(ua)
+    const isSafari = /Safari/i.test(ua) && !/Chrome|Chromium|OPR|Edg|Android/i.test(ua)
+    return isIOS || isSafari
+  }
+
+  function preferH264(sdp: string): string {
+    try {
+      const lines = sdp.split('\n')
+      const rtpmap: Record<string, string> = {}
+      const h264Pts: string[] = []
+      let mLineIdx = -1
+      let mLineParts: string[] = []
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (line.startsWith('m=video')) {
+          mLineIdx = i
+          mLineParts = line.split(' ')
+        } else if (line.startsWith('a=rtpmap:')) {
+          const m = line.match(/^a=rtpmap:(\d+)\s+([^\/]+)\//i)
+          if (m) {
+            rtpmap[m[1]] = m[2].toUpperCase()
+            if (rtpmap[m[1]] === 'H264') h264Pts.push(m[1])
+          }
+        }
+      }
+      if (mLineIdx >= 0 && h264Pts.length > 0 && mLineParts.length > 3) {
+        const currentPts = mLineParts.slice(3)
+        const newOrder = [...currentPts.filter(pt => h264Pts.includes(pt)), ...currentPts.filter(pt => !h264Pts.includes(pt))]
+        lines[mLineIdx] = [...mLineParts.slice(0, 3), ...newOrder].join(' ')
+        return lines.join('\n')
+      }
+      return sdp
+    } catch {
+      return sdp
+    }
+  }
+
+  function wirePcHandlers(pc: RTCPeerConnection) {
+    pc.ontrack = async ev => {
+      const [remoteStream] = ev.streams
+      if (remoteStream) {
+        remoteStreamRef.current = remoteStream
+      }
+      const el = remoteVideoRef.current as HTMLVideoElement | null
+      if (el && remoteStream) {
+        el.srcObject = remoteStream
+        ;(el as any).muted = false
+        try {
+          const anyEl: any = el
+          if (outputSupported && anyEl.setSinkId) {
+            await anyEl.setSinkId(sinkId ?? 'default')
+          }
+        } catch (e) {
+          console.warn('setSinkId failed', e)
+        }
+        tryPlayRemote('ontrack')
+        if (ev.track) {
+          ev.track.onunmute = () => tryPlayRemote('track-unmute')
+        }
+      }
+    }
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState
+      setStatus(`ICE: ${state}`)
+      if (state === 'connected' || state === 'completed') {
+        iceRetriesRef.current = 0
+        if (disconnectedTimerRef.current) {
+          window.clearTimeout(disconnectedTimerRef.current)
+          disconnectedTimerRef.current = null
+        }
+      }
+      if (state === 'disconnected') {
+        if (disconnectedTimerRef.current) {
+          window.clearTimeout(disconnectedTimerRef.current)
+        }
+        disconnectedTimerRef.current = window.setTimeout(() => {
+          if (pcRef.current && pcRef.current.iceConnectionState === 'disconnected') {
+            attemptIceRestart()
+          }
+        }, 5000)
+      } else if (state === 'failed') {
+        attemptIceRestart()
+        // Escalate to TURN-only if available and not already in relay mode
+        const policy = (pc as any).__policy || ICE_TRANSPORT_POLICY
+        if (policy !== 'relay' && hasTurnConfigured()) {
+          recreatePeerConnectionRelay().catch(err => console.warn('relay fallback failed', err))
+        } else if (!hasTurnConfigured()) {
+          setRecover({
+            title: 'Не удалось установить медиасоединение',
+            details: 'Вероятно, сеть блокирует прямое P2P‑соединение. Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
+          })
+        }
+      }
+    }
+    pc.onicecandidate = ev => {
+      if (ev.candidate) {
+        send({ type: 'candidate', peerId: peerIdRef.current, candidate: ev.candidate })
+      }
+    }
+  }
+
+  async function recreatePeerConnectionRelay() {
+    const old = pcRef.current
+    if (!old) return
+    try { old.onicecandidate = null as any } catch {}
+    try { old.ontrack = null as any } catch {}
+    try { old.close() } catch {}
+
+    const newPc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: 'relay' })
+    ;(newPc as any).__policy = 'relay'
+    pcRef.current = newPc
+
+    const local = localStreamRef.current
+    if (local) {
+      local.getTracks().forEach(t => newPc.addTrack(t, local))
+    }
+    wirePcHandlers(newPc)
+
+    if (roleRef.current === 'offerer') {
+      try {
+        await makeOffer(true)
+      } catch (e) {
+        console.warn('relay makeOffer failed', e)
+      }
+    } else {
+      setStatus('ожидание переподключения…')
+    }
+  }
+
   async function flushPendingCandidates() {
     const pc = pcRef.current
     if (!pc || !pc.remoteDescription) return
@@ -543,7 +636,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   async function makeOffer(iceRestart: boolean = false) {
     if (!pcRef.current) return
-    const offer = await pcRef.current.createOffer(iceRestart ? { iceRestart: true } : undefined)
+    let offer = await pcRef.current.createOffer(iceRestart ? { iceRestart: true } : undefined)
+    // Prefer H.264 for Safari/iOS interoperability
+    if (isSafariLike() && offer.sdp) {
+      offer = { ...offer, sdp: preferH264(offer.sdp) }
+    }
     await pcRef.current.setLocalDescription(offer)
     send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
     setStatus(iceRestart ? 'переподключение…' : 'подключение…')
