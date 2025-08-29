@@ -40,7 +40,13 @@ class ByeMessage(BaseModel):
     peerId: str
 
 
-SignalMessage = JoinMessage | SDPMessage | IceMessage | ByeMessage
+class OrientationMessage(BaseModel):
+    type: Literal["orientation"] = "orientation"
+    peerId: str
+    layout: Literal["portrait", "landscape"]
+
+
+SignalMessage = JoinMessage | SDPMessage | IceMessage | ByeMessage | OrientationMessage
 
 
 class CreateRoomResponse(BaseModel):

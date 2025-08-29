@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY } from '../config'
-import { Button, Stack, IconButton, Tooltip } from '@mui/material'
+import { IconButton, Tooltip, Menu, MenuItem } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CallEndIcon from '@mui/icons-material/CallEnd'
 import MicIcon from '@mui/icons-material/Mic'
 import MicOffIcon from '@mui/icons-material/MicOff'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
+import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
+import SettingsIcon from '@mui/icons-material/Settings'
 
 type WSMsg =
   | { type: 'room-info'; peers: string[]; max: number }
@@ -14,12 +16,34 @@ type WSMsg =
   | { type: 'peer-left'; peerId: string }
   | { type: 'offer' | 'answer'; peerId: string; sdp: any }
   | { type: 'candidate'; peerId: string; candidate: any }
+  | { type: 'orientation'; peerId: string; layout: 'portrait' | 'landscape' }
   | { type: 'error'; code: string; message: string }
 
 function rid() {
   const b = new Uint8Array(8)
   crypto.getRandomValues(b)
   return Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+}
+
+function isMobileDevice(): boolean {
+  const ua = navigator.userAgent || ''
+  const touch = (navigator as any).maxTouchPoints || 0
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || touch > 0
+}
+
+function currentOrientation(): 'portrait' | 'landscape' {
+  try {
+    if (window.matchMedia) {
+      return window.matchMedia('(orientation: portrait)').matches ? 'portrait' : 'landscape'
+    }
+  } catch {}
+  return window.innerHeight >= window.innerWidth ? 'portrait' : 'landscape'
+}
+
+function detectInitialLayout(): 'portrait' | 'landscape' {
+  // Laptops/desktop always horizontal per requirements
+  if (!isMobileDevice()) return 'landscape'
+  return currentOrientation()
 }
 
 export const Room: React.FC<{ token: string }> = ({ token }) => {
@@ -33,6 +57,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([])
   const [sinkId, setSinkId] = useState<string | null>(() => localStorage.getItem('audioSinkId'))
   const [outputSupported, setOutputSupported] = useState<boolean>(() => typeof (HTMLMediaElement.prototype as any).setSinkId === 'function')
+  const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(null)
+  const openSettings = (e: React.MouseEvent<HTMLElement>) => setSettingsAnchor(e.currentTarget)
+  const closeSettings = () => setSettingsAnchor(null)
+
+  // Video device management
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([])
+  const [currentVideoDeviceId, setCurrentVideoDeviceId] = useState<string | null>(null)
+  const canSwitchCam = videoInputs.length > 1
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -45,6 +77,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const [needsPlaybackResume, setNeedsPlaybackResume] = useState(false)
   const cleanupPlaybackResumeRef = useRef<(() => void) | null>(null)
   const pendingCandidatesRef = useRef<any[]>([])
+
+  // Orientation/layout state
+  const [localLayout, setLocalLayout] = useState<'portrait' | 'landscape'>(() => detectInitialLayout())
+  const [remoteLayout, setRemoteLayout] = useState<'portrait' | 'landscape'>('landscape')
 
   useEffect(() => {
     let closed = false
@@ -80,6 +116,12 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
+      const vTrack = stream.getVideoTracks()[0]
+      try { setCurrentVideoDeviceId(vTrack?.getSettings()?.deviceId ?? null) } catch {}
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        setVideoInputs(devices.filter(d => d.kind === 'videoinput'))
+      } catch {}
 
       setStatus('создание peer connection…')
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: ICE_TRANSPORT_POLICY })
@@ -150,6 +192,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       ws.onopen = () => {
         // join immediately; role corrected after room-info
         send({ type: 'join', peerId: peerIdRef.current, role: 'offerer' })
+        // Send current layout info (will be ignored if no peer yet)
+        sendOrientation(localLayout)
         setStatus('ожидание собеседника…')
       }
 
@@ -170,6 +214,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             // Send (or resend) offer once a peer is present
             await makeOffer()
           }
+          // Share our current layout to the new peer
+          sendOrientation(localLayout)
+        } else if (msg.type === 'orientation') {
+          setRemoteLayout(msg.layout)
         } else if (msg.type === 'offer') {
           if (!pcRef.current) return
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
@@ -260,6 +308,29 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     ensureLabels().finally(refreshOutputs)
 
     const onChange = () => refreshOutputs()
+    navigator.mediaDevices?.addEventListener?.('devicechange', onChange)
+    return () => {
+      mounted = false
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onChange)
+    }
+  }, [])
+
+  // Track available video input devices and react to changes
+  useEffect(() => {
+    let mounted = true
+    async function refreshVideoInputs() {
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices()
+        const vids = list.filter(d => d.kind === 'videoinput')
+        if (!mounted) return
+        setVideoInputs(vids)
+      } catch (e) {
+        console.warn('enumerateDevices failed', e)
+      }
+    }
+    // Initial detection
+    refreshVideoInputs()
+    const onChange = () => refreshVideoInputs()
     navigator.mediaDevices?.addEventListener?.('devicechange', onChange)
     return () => {
       mounted = false
@@ -396,6 +467,43 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  function sendOrientation(layout: 'portrait' | 'landscape') {
+    send({ type: 'orientation', peerId: peerIdRef.current, layout })
+  }
+
+  // Watch for device orientation changes and notify peer
+  useEffect(() => {
+    const handler = () => {
+      const next: 'portrait' | 'landscape' = isMobileDevice() ? currentOrientation() : 'landscape'
+      if (next !== localLayout) {
+        setLocalLayout(next)
+        sendOrientation(next)
+      }
+    }
+    window.addEventListener('resize', handler)
+    try { (window.screen as any)?.orientation?.addEventListener?.('change', handler) } catch {}
+    window.addEventListener('orientationchange', handler)
+    return () => {
+      window.removeEventListener('resize', handler)
+      try { (window.screen as any)?.orientation?.removeEventListener?.('change', handler) } catch {}
+      window.removeEventListener('orientationchange', handler)
+    }
+  }, [localLayout])
+
+  // Disable page scroll while on the call screen
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prevHtmlOverflow = html.style.overflow
+    const prevBodyOverflow = body.style.overflow
+    html.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    return () => {
+      html.style.overflow = prevHtmlOverflow
+      body.style.overflow = prevBodyOverflow
+    }
+  }, [])
+
   function toggleMic() {
     const stream = localStreamRef.current
     if (!stream) return
@@ -412,6 +520,61 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     setCamOn(enabled)
   }
 
+  async function switchCamera() {
+    try {
+      if (!canSwitchCam) return
+      const stream = localStreamRef.current
+      const pc = pcRef.current
+      if (!stream) return
+      const currentId = currentVideoDeviceId
+      const list = videoInputs
+      if (!list || list.length < 2) return
+      // Pick next deviceId
+      const idx = Math.max(0, list.findIndex(d => d.deviceId === currentId))
+      const next = list[(idx + 1) % list.length]
+      if (!next) return
+      const constraints: MediaStreamConstraints = { audio: false, video: { deviceId: { exact: next.deviceId } as any } }
+      const nStream = await navigator.mediaDevices.getUserMedia(constraints)
+      const newTrack = nStream.getVideoTracks()[0]
+      if (!newTrack) return
+      // Preserve camera enabled state
+      newTrack.enabled = camOn
+
+      // Replace track in RTCPeerConnection
+      const sender = pc?.getSenders().find(s => s.track && s.track.kind === 'video')
+      const oldTrack = stream.getVideoTracks()[0]
+      if (sender && sender.replaceTrack) {
+        await sender.replaceTrack(newTrack)
+      } else if (pc) {
+        pc.addTrack(newTrack, stream)
+        try {
+          await makeOffer()
+        } catch (e) {
+          console.warn('renegotiation after addTrack failed', e)
+        }
+      }
+
+      // Update local stream and element
+      if (oldTrack) {
+        stream.removeTrack(oldTrack)
+        oldTrack.stop()
+      }
+      stream.addTrack(newTrack)
+      if (localVideoRef.current) {
+        // Re-assign to ensure UI updates immediately in some browsers
+        localVideoRef.current.srcObject = null
+        localVideoRef.current.srcObject = stream
+      }
+      setCurrentVideoDeviceId(next.deviceId)
+      // Cleanup temporary stream
+      nStream.getTracks().forEach(t => {
+        if (t !== newTrack) t.stop()
+      })
+    } catch (e) {
+      console.warn('switchCamera failed', e)
+    }
+  }
+
   function hangup() {
     try { wsRef.current?.close() } catch {}
     try { pcRef.current?.close() } catch {}
@@ -421,7 +584,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
       <div style={{ position: 'relative', flex: 1, background: '#111' }}>
-        <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#222' }} />
+        <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#222' }} />
         {needsPlaybackResume && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
             <button
@@ -432,7 +595,35 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </button>
           </div>
         )}
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 16, right: 16, width: 240, height: 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
+        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 16, right: 16, width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
+        {outputSupported && outputs.length > 0 && (
+          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 3 }}>
+            <Tooltip title="Настройки звука">
+              <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                <SettingsIcon />
+              </IconButton>
+            </Tooltip>
+            <Menu
+              anchorEl={settingsAnchor}
+              open={Boolean(settingsAnchor)}
+              onClose={closeSettings}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            >
+              <MenuItem selected={!sinkId} onClick={() => { applySink(null); closeSettings(); }}>
+                Системный по умолчанию
+              </MenuItem>
+              {outputs.map(d => (
+                <MenuItem key={d.deviceId} selected={sinkId === d.deviceId} onClick={() => { applySink(d.deviceId); closeSettings(); }}>
+                  {d.label || 'Устройство вывода'}
+                </MenuItem>
+              ))}
+            </Menu>
+          </div>
+        )}
+        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
+          {status}
+        </div>
         <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', gap: 8, zIndex: 3 }}>
           <Tooltip title={micOn ? 'Микрофон включен' : 'Микрофон выключен'}>
             <IconButton onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
@@ -444,44 +635,26 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               {camOn ? <VideocamIcon /> : <VideocamOffIcon />}
             </IconButton>
           </Tooltip>
+          {canSwitchCam && (
+            <Tooltip title="Переключить камеру">
+              <IconButton onClick={switchCamera} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                <CameraswitchIcon />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title="Скопировать ссылку">
+            <IconButton onClick={() => navigator.clipboard.writeText(link)} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+              <ContentCopyIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Положить трубку">
+            <IconButton onClick={hangup} size="large" sx={{ bgcolor: 'rgba(211,47,47,0.9)', color: 'white', '&:hover': { bgcolor: 'rgba(198,40,40,1)' } }}>
+              <CallEndIcon />
+            </IconButton>
+          </Tooltip>
         </div>
-      </div>
-      <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #ddd', flexWrap: 'wrap' }}>
-        <strong style={{ flex: 1, minWidth: 180 }}>{status}</strong>
-        {outputSupported ? (
-          <>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>Вывод:</span>
-              <select
-                style={{ padding: 8, fontSize: 14 }}
-                value={sinkId ?? ''}
-                onChange={e => applySink(e.target.value || null)}
-              >
-                <option value="">Системный по умолчанию</option>
-                {outputs.map(d => (
-                  <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || 'Устройство вывода'}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        ) : (
-          <span style={{ color: '#666' }} title="Ваш браузер не позволяет выбирать устройство вывода">
-            Выбор вывода недоступен в этом браузере
-          </span>
-        )}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, width: { xs: '100%', sm: 'auto' } }}>
-          <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => navigator.clipboard.writeText(link)} sx={{ borderRadius: 999 }}>
-            Скопировать ссылку
-          </Button>
-          <Button variant="contained" color="error" startIcon={<CallEndIcon />} onClick={hangup} sx={{ borderRadius: 999 }}>
-            Положить трубку
-          </Button>
-        </Stack>
       </div>
     </div>
   )
 }
 
-const btn: React.CSSProperties = { padding: '10px 14px', fontSize: 16, cursor: 'pointer' }

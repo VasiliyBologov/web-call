@@ -9,7 +9,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage
+from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
 from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
 
 logger = logging.getLogger("webcall")
@@ -165,6 +165,15 @@ async def ws_room(ws: WebSocket, token: str):
                     await send_error(ws, "bad_bye", f"{e}")
                     continue
                 await broadcast(token, bye.peerId, bye.model_dump())
+
+            # ORIENTATION
+            elif msg_type == "orientation":
+                try:
+                    orient = OrientationMessage(**data)
+                except Exception as e:
+                    await send_error(ws, "bad_orientation", f"{e}")
+                    continue
+                await broadcast(token, orient.peerId, orient.model_dump())
 
             else:
                 await send_error(ws, "unknown_type", f"Unknown type: {msg_type}")
