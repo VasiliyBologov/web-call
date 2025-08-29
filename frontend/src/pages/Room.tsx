@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY } from '../config'
+import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY, api } from '../config'
 import { IconButton, Tooltip, Menu, MenuItem } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CallEndIcon from '@mui/icons-material/CallEnd'
@@ -77,6 +77,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const [needsPlaybackResume, setNeedsPlaybackResume] = useState(false)
   const cleanupPlaybackResumeRef = useRef<(() => void) | null>(null)
   const pendingCandidatesRef = useRef<any[]>([])
+  const [recover, setRecover] = useState<{ title: string; details?: string } | null>(null)
 
   // Orientation/layout state
   const [localLayout, setLocalLayout] = useState<'portrait' | 'landscape'>(() => detectInitialLayout())
@@ -201,6 +202,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         const msg: WSMsg = JSON.parse(ev.data)
         if (msg.type === 'error') {
           setStatus(`Ошибка: ${msg.code}`)
+          if (msg.code === 'room_not_found') {
+            setRecover({ title: 'Ссылка недействительна', details: 'Комната не найдена или срок действия ссылки истёк.' })
+          }
           return
         }
         if (msg.type === 'room-info') {
@@ -252,8 +256,17 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
       }
 
-      ws.onclose = () => {
-        if (!closed) setStatus('сигнализация отключена')
+      ws.onclose = (ev) => {
+        if (closed) return
+        if ((ev as CloseEvent).code === 4404) {
+          setStatus('ссылка недействительна')
+          setRecover({ title: 'Ссылка недействительна', details: 'Комната не найдена или срок действия ссылки истёк.' })
+        } else if ((ev as CloseEvent).code === 4403) {
+          setStatus('комната заполнена')
+          setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
+        } else {
+          setStatus('сигнализация отключена')
+        }
       }
     }
 
@@ -599,6 +612,21 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     window.location.href = '/'
   }
 
+  async function createNewRoom() {
+    try {
+      setStatus('создание новой комнаты…')
+      const res = await fetch(api('/api/rooms'), { method: 'POST' })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      const url = data?.url || (data?.token ? `/r/${data.token}` : null)
+      if (!url) throw new Error('bad response')
+      window.location.href = url
+    } catch (e) {
+      console.warn('createNewRoom failed', e)
+      setStatus('Не удалось создать комнату')
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: 'var(--app-vh, 100vh)', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
       <div style={{ position: 'relative', flex: 1, background: '#111' }}>
@@ -611,6 +639,18 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             >
               Включить звук
             </button>
+          </div>
+        )}
+        {recover && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}>
+            <div style={{ background: 'white', color: '#111', borderRadius: 12, padding: 20, maxWidth: 420, width: '90%', textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{recover.title}</div>
+              {recover.details && <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 16 }}>{recover.details}</div>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                <button onClick={createNewRoom} style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#1976d2', color: 'white', cursor: 'pointer' }}>Создать новую комнату</button>
+                <button onClick={() => (window.location.href = '/')} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ccc', background: 'white', color: '#111', cursor: 'pointer' }}>На главную</button>
+              </div>
+            </div>
           </div>
         )}
         <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
