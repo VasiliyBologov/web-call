@@ -80,6 +80,26 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const pendingCandidatesRef = useRef<any[]>([])
   const [recover, setRecover] = useState<{ title: string; details?: string } | null>(null)
 
+  // Desired media state regardless of page activity
+  const desiredMicOnRef = useRef(true)
+  const desiredCamOnRef = useRef(true)
+  const pageActiveRef = useRef(true)
+
+  function isPageActive(): boolean {
+    return document.visibilityState === 'visible' && document.hasFocus()
+  }
+
+  function applyActiveState() {
+    const active = isPageActive()
+    pageActiveRef.current = active
+    const stream = localStreamRef.current
+    if (!stream) return
+    try {
+      stream.getAudioTracks().forEach(t => (t.enabled = active && desiredMicOnRef.current))
+      stream.getVideoTracks().forEach(t => (t.enabled = active && desiredCamOnRef.current))
+    } catch {}
+  }
+
   // Orientation/layout state
   const [localLayout, setLocalLayout] = useState<'portrait' | 'landscape'>(() => detectInitialLayout())
   const [remoteLayout, setRemoteLayout] = useState<'portrait' | 'landscape'>('landscape')
@@ -134,6 +154,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       pcRef.current = pc
 
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
+      // Ensure only active tab sends
+      applyActiveState()
 
       pc.ontrack = async ev => {
         const [remoteStream] = ev.streams
@@ -411,7 +433,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   async function tryPlayRemote(trigger: string = 'manual') {
-    const el = remoteVideoRef.current
+    const el = remoteVideoRef.current as HTMLVideoElement | null
     if (!el) return
     try {
       await el.play()
@@ -419,11 +441,22 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       if (cleanupPlaybackResumeRef.current) {
         cleanupPlaybackResumeRef.current()
       }
-    } catch (e) {
-      // Likely autoplay policy (iOS/Safari). Show resume UI and set handlers.
-      setNeedsPlaybackResume(true)
-      setupPlaybackResumeOnce()
-      console.warn('Remote media play() blocked on', trigger, e)
+    } catch (e1) {
+      // Autoplay blocked. Try muted-first strategy (common workaround on iOS/Safari)
+      try {
+        ;(el as any).muted = true
+        await el.play()
+        setNeedsPlaybackResume(false)
+        // Unmute shortly after playback starts
+        setTimeout(() => { try { (el as any).muted = false } catch {} }, 150)
+        // Keep silent resume listeners as a fallback if unmute gets re-blocked
+        setupPlaybackResumeOnce()
+      } catch (e2) {
+        // Still blocked; keep silent resume listeners but do not show any overlay/button
+        setNeedsPlaybackResume(false)
+        setupPlaybackResumeOnce()
+        console.warn('Remote media play() blocked on', trigger, e1, e2)
+      }
     }
   }
 
@@ -540,20 +573,41 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }, [])
 
+  // Only active tab/window should transmit media
+  useEffect(() => {
+    const onVis = () => applyActiveState()
+    const onFocus = () => applyActiveState()
+    const onBlur = () => applyActiveState()
+    const onPageShow = () => applyActiveState()
+    const onPageHide = () => applyActiveState()
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('pagehide', onPageHide)
+    // initial
+    applyActiveState()
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('pagehide', onPageHide)
+    }
+  }, [])
+
   function toggleMic() {
-    const stream = localStreamRef.current
-    if (!stream) return
     const enabled = !micOn
-    stream.getAudioTracks().forEach(t => (t.enabled = enabled))
+    desiredMicOnRef.current = enabled
     setMicOn(enabled)
+    applyActiveState()
   }
 
   function toggleCam() {
-    const stream = localStreamRef.current
-    if (!stream) return
     const enabled = !camOn
-    stream.getVideoTracks().forEach(t => (t.enabled = enabled))
+    desiredCamOnRef.current = enabled
     setCamOn(enabled)
+    applyActiveState()
   }
 
   async function switchCamera() {
@@ -588,7 +642,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       const newTrack = nStream.getVideoTracks()[0]
       if (!newTrack) return
       // Preserve camera enabled state
-      newTrack.enabled = camOn
+      newTrack.enabled = isPageActive() && desiredCamOnRef.current
 
       // Replace track in RTCPeerConnection
       const sender = pc?.getSenders().find(s => s.track && s.track.kind === 'video')
@@ -656,16 +710,6 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     <div style={{ width: '100%', height: 'var(--app-vh, 100vh)', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
       <div style={{ position: 'relative', flex: 1, background: '#111' }}>
         <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#222' }} />
-        {needsPlaybackResume && (
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
-            <button
-              onClick={() => tryPlayRemote('button')}
-              style={{ padding: '12px 18px', fontSize: 18, borderRadius: 999, border: 'none', background: '#1976d2', color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer' }}
-            >
-              Включить звук
-            </button>
-          </div>
-        )}
         {recover && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}>
             <div style={{ background: 'white', color: '#111', borderRadius: 12, padding: 20, maxWidth: 420, width: '90%', textAlign: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
