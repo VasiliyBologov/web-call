@@ -64,7 +64,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   // Video device management
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([])
   const [currentVideoDeviceId, setCurrentVideoDeviceId] = useState<string | null>(null)
-  const canSwitchCam = videoInputs.length > 1
+  const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment' | null>(null)
+  const canSwitchCam = videoInputs.length > 1 || isMobileDevice()
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -119,6 +120,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
       const vTrack = stream.getVideoTracks()[0]
       try { setCurrentVideoDeviceId(vTrack?.getSettings()?.deviceId ?? null) } catch {}
+      try {
+        const fm: any = vTrack?.getSettings?.()?.facingMode
+        if (fm === 'user' || fm === 'environment') setCurrentFacingMode(fm)
+      } catch {}
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
         setVideoInputs(devices.filter(d => d.kind === 'videoinput'))
@@ -557,15 +562,29 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       const stream = localStreamRef.current
       const pc = pcRef.current
       if (!stream) return
-      const currentId = currentVideoDeviceId
-      const list = videoInputs
-      if (!list || list.length < 2) return
-      // Pick next deviceId
-      const idx = Math.max(0, list.findIndex(d => d.deviceId === currentId))
-      const next = list[(idx + 1) % list.length]
-      if (!next) return
-      const constraints: MediaStreamConstraints = { audio: false, video: { deviceId: { exact: next.deviceId } as any } }
-      const nStream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      // 1) Try facingMode toggle first (best for iOS Safari)
+      const targetFacing: 'user' | 'environment' = (currentFacingMode === 'environment' ? 'user' : 'environment')
+      let nStream: MediaStream | null = null
+      try {
+        nStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { exact: targetFacing } as any } })
+      } catch {
+        try {
+          nStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: targetFacing } as any } })
+        } catch {}
+      }
+
+      // 2) Fallback to deviceId cycling if facingMode failed or not supported
+      if (!nStream) {
+        const list = videoInputs
+        const currentId = currentVideoDeviceId
+        if (!list || list.length < 2) return
+        const idx = Math.max(0, list.findIndex(d => d.deviceId === currentId))
+        const next = list[(idx + 1) % list.length]
+        if (!next) return
+        nStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: next.deviceId } as any } })
+      }
+
       const newTrack = nStream.getVideoTracks()[0]
       if (!newTrack) return
       // Preserve camera enabled state
@@ -578,29 +597,35 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         await sender.replaceTrack(newTrack)
       } else if (pc) {
         pc.addTrack(newTrack, stream)
-        try {
-          await makeOffer()
-        } catch (e) {
-          console.warn('renegotiation after addTrack failed', e)
-        }
+        try { await makeOffer() } catch (e) { console.warn('renegotiation after addTrack failed', e) }
       }
 
       // Update local stream and element
       if (oldTrack) {
         stream.removeTrack(oldTrack)
-        oldTrack.stop()
+        // Safari/iOS quirk: delay stopping the old track slightly to allow proper switch-back
+        setTimeout(() => { try { oldTrack.stop() } catch {} }, 150)
       }
       stream.addTrack(newTrack)
       if (localVideoRef.current) {
-        // Re-assign to ensure UI updates immediately in some browsers
         localVideoRef.current.srcObject = null
         localVideoRef.current.srcObject = stream
       }
-      setCurrentVideoDeviceId(next.deviceId)
+
+      // Update state from new track settings
+      try {
+        const s = newTrack.getSettings?.() as any
+        setCurrentVideoDeviceId(s?.deviceId ?? null)
+        const fm = s?.facingMode
+        if (fm === 'user' || fm === 'environment') {
+          setCurrentFacingMode(fm)
+        } else {
+          setCurrentFacingMode(targetFacing)
+        }
+      } catch {}
+
       // Cleanup temporary stream
-      nStream.getTracks().forEach(t => {
-        if (t !== newTrack) t.stop()
-      })
+      nStream.getTracks().forEach(t => { if (t !== newTrack) try { t.stop() } catch {} })
     } catch (e) {
       console.warn('switchCamera failed', e)
     }
