@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../config'
 import QRCode from 'qrcode'
 import { Button, Stack } from '@mui/material'
@@ -10,6 +10,10 @@ export const Home: React.FC = () => {
   const [roomUrl, setRoomUrl] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const base = useMemo(() => window.location.origin, [])
+
+  useEffect(() => {
+    document.title = 'TalkLink — видеозвонок по одной ссылке'
+  }, [])
 
   async function createRoom() {
     setRoomUrl(null)

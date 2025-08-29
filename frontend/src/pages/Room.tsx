@@ -52,6 +52,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const [camOn, setCamOn] = useState(true)
   const [link] = useState<string>(() => `${window.location.origin}/r/${token}`)
 
+  useEffect(() => {
+    document.title = 'TalkLink — Комната видеозвонка'
+  }, [])
+
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([])

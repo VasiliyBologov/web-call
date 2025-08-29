@@ -1,0 +1,5 @@
+# robots.txt for https://talklink.space/
+User-agent: *
+Allow: /
+
+Sitemap: https://talklink.space/sitemap.xml

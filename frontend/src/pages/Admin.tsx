@@ -26,6 +26,10 @@ export const Admin: React.FC = () => {
 
   const base = useMemo(() => window.location.origin, [])
 
+  useEffect(() => {
+    document.title = 'TalkLink — Админ панель'
+  }, [])
+
   async function load() {
     setLoading(true)
     setError(null)
