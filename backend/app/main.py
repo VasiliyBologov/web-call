@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Dict
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
 from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
@@ -206,3 +207,114 @@ async def broadcast(token: str, from_peer: str, payload: dict):
             except Exception:
                 pass
             del peers[pid]
+
+
+# --- Admin endpoints ---
+@app.get("/api/admin/connections")
+async def admin_connections():
+    """Return list of active rooms and connected peers."""
+    rooms = []
+    # Snapshot current connections map
+    for token, peers_map in list(connections.items()):
+        try:
+            room = await store.get_room(token)
+        except Exception:
+            room = None
+        peers_list = []
+        if room is not None:
+            for pid in list(peers_map.keys()):
+                connected_at = None
+                try:
+                    if pid in room.peers:
+                        connected_at = room.peers[pid].connected_at
+                except Exception:
+                    connected_at = None
+                peers_list.append({
+                    "peerId": pid,
+                    "connectedAt": connected_at,
+                })
+            participants = room.participants
+            maxp = room.max_participants
+            status = "active" if participants > 0 else "waiting"
+        else:
+            for pid in list(peers_map.keys()):
+                peers_list.append({"peerId": pid, "connectedAt": None})
+            participants = len(peers_map)
+            maxp = None
+            status = "unknown"
+        rooms.append({
+            "token": token,
+            "participants": participants,
+            "maxParticipants": maxp,
+            "status": status,
+            "peers": peers_list,
+        })
+    return {"rooms": rooms}
+
+
+@app.delete("/api/admin/connections/{token}/{peer_id}")
+async def admin_disconnect(token: str, peer_id: str):
+    ws = connections.get(token, {}).get(peer_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Connection not found")
+    # Try to inform client then close
+    try:
+        try:
+            await ws.send_text(json.dumps({
+                "type": "error",
+                "code": "kicked",
+                "message": "Disconnected by admin",
+            }))
+        except Exception:
+            pass
+        await ws.close(code=4401)
+    except Exception:
+        pass
+    return JSONResponse({"ok": True})
+
+
+# --- Admin preview endpoints ---
+PREVIEW_MAX_BYTES = 300_000
+PREVIEW_TTL_SECONDS = 120
+# Structure: previews[token][peer_id] = { 'bytes': bytes, 'type': str, 'ts': float }
+previews: Dict[str, Dict[str, dict]] = {}
+
+
+def _cleanup_previews():
+    now = time.time()
+    for token, peers in list(previews.items()):
+        for pid, meta in list(peers.items()):
+            try:
+                ts = float(meta.get('ts', 0))
+            except Exception:
+                ts = 0
+            if now - ts > PREVIEW_TTL_SECONDS:
+                del peers[pid]
+        if not peers:
+            del previews[token]
+
+
+@app.post("/api/admin/preview/{token}/{peer_id}")
+async def admin_upload_preview(token: str, peer_id: str, request: Request):
+    ctype = (request.headers.get("content-type") or "").lower()
+    if not (ctype.startswith("image/jpeg") or ctype.startswith("image/png")):
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Empty body")
+    if len(body) > PREVIEW_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Payload too large")
+    _cleanup_previews()
+    if token not in previews:
+        previews[token] = {}
+    previews[token][peer_id] = {"bytes": body, "type": ("image/jpeg" if "jpeg" in ctype else "image/png"), "ts": time.time()}
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/preview/{token}/{peer_id}")
+async def admin_get_preview(token: str, peer_id: str):
+    _cleanup_previews()
+    meta = previews.get(token, {}).get(peer_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Preview not found")
+    return Response(content=meta["bytes"], media_type=meta["type"])

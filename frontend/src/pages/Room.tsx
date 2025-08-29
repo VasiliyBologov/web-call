@@ -80,6 +80,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const pendingCandidatesRef = useRef<any[]>([])
   const [recover, setRecover] = useState<{ title: string; details?: string } | null>(null)
 
+  // Admin preview (thumbnail) helpers
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const previewTimerRef = useRef<number | null>(null)
+
   // Desired media state regardless of page activity
   const desiredMicOnRef = useRef(true)
   const desiredCamOnRef = useRef(true)
@@ -98,6 +102,59 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       stream.getAudioTracks().forEach(t => (t.enabled = active && desiredMicOnRef.current))
       stream.getVideoTracks().forEach(t => (t.enabled = active && desiredCamOnRef.current))
     } catch {}
+  }
+
+  // --- Admin preview helpers ---
+  function ensurePreviewTimer() {
+    if (previewTimerRef.current) return
+    previewTimerRef.current = window.setInterval(() => {
+      captureAndUploadPreview().catch(() => {})
+    }, 1000)
+  }
+  function stopPreviewTimer() {
+    if (previewTimerRef.current) {
+      window.clearInterval(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+  }
+  async function captureAndUploadPreview() {
+    const videoEl = localVideoRef.current
+    const stream = localStreamRef.current
+    if (!videoEl || !stream) return
+    const vTrack = stream.getVideoTracks()[0]
+    if (!vTrack || !vTrack.enabled) return
+    const vw = videoEl.videoWidth || 640
+    const vh = videoEl.videoHeight || 480
+    if (vw === 0 || vh === 0) return
+    const targetW = 320
+    const targetH = Math.max(1, Math.round(vh * (targetW / vw)))
+    let canvas = previewCanvasRef.current
+    if (!canvas) {
+      canvas = document.createElement('canvas')
+      previewCanvasRef.current = canvas
+    }
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    try {
+      ctx.drawImage(videoEl, 0, 0, targetW, targetH)
+    } catch {
+      return
+    }
+    await new Promise<void>(resolve => {
+      canvas!.toBlob(async (blob) => {
+        if (!blob) return resolve()
+        try {
+          await fetch(api(`/api/admin/preview/${encodeURIComponent(token)}/${encodeURIComponent(peerIdRef.current)}`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'image/jpeg' },
+            body: blob,
+          })
+        } catch {}
+        resolve()
+      }, 'image/jpeg', 0.5)
+    })
   }
 
   // Orientation/layout state
@@ -138,6 +195,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
+      // Start periodic admin preview uploader (1 FPS)
+      try { ensurePreviewTimer() } catch {}
       const vTrack = stream.getVideoTracks()[0]
       try { setCurrentVideoDeviceId(vTrack?.getSettings()?.deviceId ?? null) } catch {}
       try {
@@ -304,6 +363,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
     return () => {
       closed = true
+      stopPreviewTimer()
       try {
         send({ type: 'bye', peerId: peerIdRef.current })
       } catch {}
