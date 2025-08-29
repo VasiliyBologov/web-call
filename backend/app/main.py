@@ -60,10 +60,12 @@ async def create_room():
 @app.get("/api/rooms/{token}", response_model=RoomInfo)
 async def get_room(token: str):
     room = await store.get_room(token)
-    if not room:
-        raise HTTPException(status_code=404, detail="Room not found")
+    now = time.time()
+    if (not room) or (now >= room.expires_at and room.participants == 0):
+        # Auto-create (or recreate) a room with the same token if missing or expired (and empty)
+        room = await store.create_room_with_token(token, MAX_PARTICIPANTS_DEFAULT)
     status = "active" if room.participants > 0 else "waiting"
-    return RoomInfo(token=token, participants=room.participants, status=status)
+    return RoomInfo(token=token, participants=room.participants, maxParticipants=room.max_participants, status=status)
 
 
 # --- WebSocket signaling ---
@@ -82,10 +84,10 @@ async def ws_room(ws: WebSocket, token: str):
     logger.info("WS connected token=%s", token)
 
     room = await store.get_room(token)
-    if not room:
-        await send_error(ws, "room_not_found", "Room not found")
-        await ws.close(code=4404)
-        return
+    now = time.time()
+    if (not room) or (now >= room.expires_at and room.participants == 0):
+        # Auto-create (or recreate) a room with the same token if missing or expired (and empty)
+        room = await store.create_room_with_token(token, MAX_PARTICIPANTS_DEFAULT)
 
     peer_id: str | None = None
 

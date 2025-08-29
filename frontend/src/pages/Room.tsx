@@ -272,6 +272,13 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
       }
 
+      setStatus('проверка ссылки…')
+      try {
+        // Backend will auto-create or recreate the room for this token
+        await fetch(api(`/api/rooms/${token}`))
+      } catch (e) {
+        // Even if this fails (e.g., network hiccup), proceed to WS — server will still handle recreation
+      }
       setStatus('подключение к сигнализации…')
       const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
       wsRef.current = ws
@@ -287,10 +294,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       ws.onmessage = async ev => {
         const msg: WSMsg = JSON.parse(ev.data)
         if (msg.type === 'error') {
+          // Treat all errors generically; backend auto-recreates rooms now
           setStatus(`Ошибка: ${msg.code}`)
-          if (msg.code === 'room_not_found') {
-            setRecover({ title: 'Ссылка недействительна', details: 'Комната не найдена или срок действия ссылки истёк.' })
-          }
           return
         }
         if (msg.type === 'room-info') {
@@ -344,10 +349,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
       ws.onclose = (ev) => {
         if (closed) return
-        if ((ev as CloseEvent).code === 4404) {
-          setStatus('ссылка недействительна')
-          setRecover({ title: 'Ссылка недействительна', details: 'Комната не найдена или срок действия ссылки истёк.' })
-        } else if ((ev as CloseEvent).code === 4403) {
+        if ((ev as CloseEvent).code === 4403) {
           setStatus('комната заполнена')
           setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
         } else {

@@ -89,6 +89,17 @@ class RoomStore:
             self._rooms[token] = room
         return room
 
+    async def create_room_with_token(self, token: str, max_participants: int = MAX_PARTICIPANTS_DEFAULT) -> Room:
+        """Create (or recreate) a room with a specific token.
+        Overwrites any existing room with the same token.
+        """
+        now = time.time()
+        room = Room(token=token, created_at=now, expires_at=now + self._ttl_seconds,
+                    max_participants=max_participants)
+        async with self._lock:
+            self._rooms[token] = room
+        return room
+
     async def get_room(self, token: str) -> Optional[Room]:
         async with self._lock:
             return self._rooms.get(token)
