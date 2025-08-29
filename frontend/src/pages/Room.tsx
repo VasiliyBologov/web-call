@@ -504,6 +504,24 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }, [])
 
+  // Dynamic viewport height for mobile (avoid 100vh issues under URL bar) and support safe-area insets
+  useEffect(() => {
+    const setVh = () => {
+      const vh = (window.visualViewport?.height ?? window.innerHeight)
+      document.documentElement.style.setProperty('--app-vh', `${vh}px`)
+    }
+    setVh()
+    const vv = window.visualViewport as any
+    window.addEventListener('resize', setVh)
+    window.addEventListener('orientationchange', setVh)
+    try { vv?.addEventListener?.('resize', setVh) } catch {}
+    return () => {
+      window.removeEventListener('resize', setVh)
+      window.removeEventListener('orientationchange', setVh)
+      try { vv?.removeEventListener?.('resize', setVh) } catch {}
+    }
+  }, [])
+
   function toggleMic() {
     const stream = localStreamRef.current
     if (!stream) return
@@ -582,7 +600,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   return (
-    <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
+    <div style={{ width: '100%', height: 'var(--app-vh, 100vh)', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif' }}>
       <div style={{ position: 'relative', flex: 1, background: '#111' }}>
         <video ref={remoteVideoRef} autoPlay playsInline style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#222' }} />
         {needsPlaybackResume && (
@@ -595,9 +613,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </button>
           </div>
         )}
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 16, right: 16, width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
+        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
         {outputSupported && outputs.length > 0 && (
-          <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 3 }}>
+          <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3 }}>
             <Tooltip title="Настройки звука">
               <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
                 <SettingsIcon />
@@ -621,10 +639,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </Menu>
           </div>
         )}
-        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
+        <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
           {status}
         </div>
-        <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', gap: 8, zIndex: 3 }}>
+        <div style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', display: 'flex', gap: 8, zIndex: 3 }}>
           <Tooltip title={micOn ? 'Микрофон включен' : 'Микрофон выключен'}>
             <IconButton onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
               {micOn ? <MicIcon /> : <MicOffIcon />}
