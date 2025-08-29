@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { api } from '../config'
 import QRCode from 'qrcode'
+import { Button, Stack } from '@mui/material'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import ShareIcon from '@mui/icons-material/Share'
 
 export const Home: React.FC = () => {
   const [roomUrl, setRoomUrl] = useState<string | null>(null)
@@ -22,11 +26,24 @@ export const Home: React.FC = () => {
     setQrDataUrl(qr)
   }
 
+  async function shareLink(url: string) {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Приглашение в видеозвонок', text: 'Присоединяйся к звонку', url })
+      } else {
+        await navigator.clipboard.writeText(url)
+        alert('Ссылка скопирована. Отправьте её в мессенджере.')
+      }
+    } catch (e) {
+      console.warn('Share failed', e)
+    }
+  }
+
   return (
     <div style={{ maxWidth: 800, margin: '40px auto', padding: 16, fontFamily: 'sans-serif' }}>
       <h1 style={{ fontSize: 28 }}>Видеозвонок по одной ссылке</h1>
       <p>Нажмите кнопку ниже, чтобы создать ссылку на комнату. Отправьте её собеседнику.</p>
-      <button onClick={createRoom} style={btnStyle}>Создать ссылку</button>
+      <Button variant="contained" color="primary" onClick={createRoom} sx={{ borderRadius: 999, px: 2.5, py: 1.5, fontSize: 18 }}>Создать ссылку</Button>
 
       {roomUrl && (
         <div style={{ marginTop: 24 }}>
@@ -34,7 +51,11 @@ export const Home: React.FC = () => {
           <p>
             <a href={roomUrl} target="_blank" rel="noreferrer" style={{ fontSize: 18 }}>{roomUrl}</a>
           </p>
-          <button style={btnStyle} onClick={() => navigator.clipboard.writeText(roomUrl!)}>Скопировать</button>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <Button variant="contained" startIcon={<ContentCopyIcon />} onClick={() => navigator.clipboard.writeText(roomUrl!)} sx={{ borderRadius: 999 }}>Скопировать</Button>
+            <Button variant="outlined" startIcon={<OpenInNewIcon />} onClick={() => window.open(roomUrl!, '_blank')} sx={{ borderRadius: 999 }}>Перейти по ссылке</Button>
+            <Button variant="outlined" startIcon={<ShareIcon />} onClick={() => shareLink(roomUrl!)} sx={{ borderRadius: 999 }}>Поделиться</Button>
+          </Stack>
           {qrDataUrl && (
             <div style={{ marginTop: 16 }}>
               <img src={qrDataUrl} alt="QR" style={{ width: 240, height: 240 }} />
@@ -53,10 +74,4 @@ export const Home: React.FC = () => {
       </div>
     </div>
   )
-}
-
-const btnStyle: React.CSSProperties = {
-  fontSize: 18,
-  padding: '12px 18px',
-  cursor: 'pointer',
 }

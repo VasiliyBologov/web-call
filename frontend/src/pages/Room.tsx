@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY } from '../config'
+import { Button, Stack, IconButton, Tooltip } from '@mui/material'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import CallEndIcon from '@mui/icons-material/CallEnd'
+import MicIcon from '@mui/icons-material/Mic'
+import MicOffIcon from '@mui/icons-material/MicOff'
+import VideocamIcon from '@mui/icons-material/Videocam'
+import VideocamOffIcon from '@mui/icons-material/VideocamOff'
 
 type WSMsg =
   | { type: 'room-info'; peers: string[]; max: number }
@@ -419,16 +426,28 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3 }}>
             <button
               onClick={() => tryPlayRemote('button')}
-              style={{ padding: '12px 18px', fontSize: 18, borderRadius: 8, border: 'none', background: '#1976d2', color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer' }}
+              style={{ padding: '12px 18px', fontSize: 18, borderRadius: 999, border: 'none', background: '#1976d2', color: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer' }}
             >
               Включить звук
             </button>
           </div>
         )}
         <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 16, right: 16, width: 240, height: 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
+        <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', gap: 8, zIndex: 3 }}>
+          <Tooltip title={micOn ? 'Микрофон включен' : 'Микрофон выключен'}>
+            <IconButton onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+              {micOn ? <MicIcon /> : <MicOffIcon />}
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={camOn ? 'Камера включена' : 'Камера выключена'}>
+            <IconButton onClick={toggleCam} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+              {camOn ? <VideocamIcon /> : <VideocamOffIcon />}
+            </IconButton>
+          </Tooltip>
+        </div>
       </div>
-      <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #ddd' }}>
-        <strong style={{ flex: 1 }}>{status}</strong>
+      <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 12, borderTop: '1px solid #ddd', flexWrap: 'wrap' }}>
+        <strong style={{ flex: 1, minWidth: 180 }}>{status}</strong>
         {outputSupported ? (
           <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -452,10 +471,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             Выбор вывода недоступен в этом браузере
           </span>
         )}
-        <button style={btn} onClick={() => navigator.clipboard.writeText(link)}>Скопировать ссылку</button>
-        <button style={btn} onClick={toggleMic}>{micOn ? 'Микрофон выкл' : 'Микрофон вкл'}</button>
-        <button style={btn} onClick={toggleCam}>{camOn ? 'Камера выкл' : 'Камера вкл'}</button>
-        <button style={{ ...btn, background: '#c62828', color: 'white' }} onClick={hangup}>Положить трубку</button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ alignItems: { xs: 'stretch', sm: 'center' }, width: { xs: '100%', sm: 'auto' } }}>
+          <Button variant="outlined" startIcon={<ContentCopyIcon />} onClick={() => navigator.clipboard.writeText(link)} sx={{ borderRadius: 999 }}>
+            Скопировать ссылку
+          </Button>
+          <Button variant="contained" color="error" startIcon={<CallEndIcon />} onClick={hangup} sx={{ borderRadius: 999 }}>
+            Положить трубку
+          </Button>
+        </Stack>
       </div>
     </div>
   )
