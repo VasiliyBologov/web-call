@@ -76,9 +76,7 @@ class RoomStore:
                 if now >= room.expires_at:
                     tokens_to_delete.add(token)
                     continue
-                if room.participants == 0 and room.last_empty_since is not None:
-                    if now - room.last_empty_since >= EMPTY_ROOM_IDLE_CLOSE_SECONDS:
-                        tokens_to_delete.add(token)
+                # Keep empty rooms until TTL to allow reconnection by previously generated link
             for token in tokens_to_delete:
                 self._rooms.pop(token, None)
 
