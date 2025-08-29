@@ -61,11 +61,15 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const openSettings = (e: React.MouseEvent<HTMLElement>) => setSettingsAnchor(e.currentTarget)
   const closeSettings = () => setSettingsAnchor(null)
 
+  // Device availability flags
+  const [hasMic, setHasMic] = useState<boolean>(true)
+  const [hasCam, setHasCam] = useState<boolean>(true)
+
   // Video device management
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([])
   const [currentVideoDeviceId, setCurrentVideoDeviceId] = useState<string | null>(null)
   const [currentFacingMode, setCurrentFacingMode] = useState<'user' | 'environment' | null>(null)
-  const canSwitchCam = videoInputs.length > 1 || isMobileDevice()
+  const canSwitchCam = videoInputs.length > 1 || (isMobileDevice() && videoInputs.length > 0)
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -184,7 +188,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               // Try video-only
               stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
             } catch (err3: any) {
-              throw err
+              // As a last resort (no devices at all), proceed with an empty stream
+              stream = new MediaStream()
             }
           }
         } else {
@@ -195,6 +200,13 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
+      // Reflect available tracks in UI state and desired flags
+      const hasAudioTrack = stream.getAudioTracks().length > 0
+      const hasVideoTrack = stream.getVideoTracks().length > 0
+      setMicOn(hasAudioTrack)
+      setCamOn(hasVideoTrack)
+      desiredMicOnRef.current = hasAudioTrack
+      desiredCamOnRef.current = hasVideoTrack
       // Start periodic admin preview uploader (1 FPS)
       try { ensurePreviewTimer() } catch {}
       const vTrack = stream.getVideoTracks()[0]
@@ -205,7 +217,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       } catch {}
       try {
         const devices = await navigator.mediaDevices.enumerateDevices()
-        setVideoInputs(devices.filter(d => d.kind === 'videoinput'))
+        const vids = devices.filter(d => d.kind === 'videoinput')
+        setVideoInputs(vids)
+        setHasMic(devices.some(d => d.kind === 'audioinput'))
+        setHasCam(vids.length > 0)
       } catch {}
 
       setStatus('создание peer connection…')
@@ -350,6 +365,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         const outs = list.filter(d => d.kind === 'audiooutput')
         if (!mounted) return
         setOutputs(outs)
+        // Update mic availability based on audioinput presence
+        setHasMic(list.some(d => d.kind === 'audioinput'))
       } catch (e) {
         console.warn('enumerateDevices failed', e)
       }
@@ -375,6 +392,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         const vids = list.filter(d => d.kind === 'videoinput')
         if (!mounted) return
         setVideoInputs(vids)
+        setHasCam(vids.length > 0)
       } catch (e) {
         console.warn('enumerateDevices failed', e)
       }
@@ -403,6 +421,22 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
     } catch {}
   }, [])
+
+  // Force-disable controls when devices are absent
+  useEffect(() => {
+    if (!hasMic) {
+      desiredMicOnRef.current = false
+      setMicOn(false)
+      applyActiveState()
+    }
+  }, [hasMic])
+  useEffect(() => {
+    if (!hasCam) {
+      desiredCamOnRef.current = false
+      setCamOn(false)
+      applyActiveState()
+    }
+  }, [hasCam])
 
   async function applySink(id: string | null) {
     const el = remoteVideoRef.current as any
@@ -756,6 +790,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }, [])
 
   function toggleMic() {
+    if (!hasMic) return
     const enabled = !micOn
     desiredMicOnRef.current = enabled
     setMicOn(enabled)
@@ -763,6 +798,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   function toggleCam() {
+    if (!hasCam) return
     const enabled = !camOn
     desiredCamOnRef.current = enabled
     setCamOn(enabled)
@@ -911,15 +947,19 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           {status}
         </div>
         <div style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', display: 'flex', gap: 8, zIndex: 3 }}>
-          <Tooltip title={micOn ? 'Микрофон включен' : 'Микрофон выключен'}>
-            <IconButton onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
-              {micOn ? <MicIcon /> : <MicOffIcon />}
-            </IconButton>
+          <Tooltip title={hasMic ? (micOn ? 'Микрофон включен' : 'Микрофон выключен') : 'Микрофон не найден'}>
+            <span>
+              <IconButton disabled={!hasMic} onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                {micOn && hasMic ? <MicIcon /> : <MicOffIcon />}
+              </IconButton>
+            </span>
           </Tooltip>
-          <Tooltip title={camOn ? 'Камера включена' : 'Камера выключена'}>
-            <IconButton onClick={toggleCam} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
-              {camOn ? <VideocamIcon /> : <VideocamOffIcon />}
-            </IconButton>
+          <Tooltip title={hasCam ? (camOn ? 'Камера включена' : 'Камера выключена') : 'Камера не найдена'}>
+            <span>
+              <IconButton disabled={!hasCam} onClick={toggleCam} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+                {camOn && hasCam ? <VideocamIcon /> : <VideocamOffIcon />}
+              </IconButton>
+            </span>
           </Tooltip>
           {canSwitchCam && (
             <Tooltip title="Переключить камеру">
