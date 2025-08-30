@@ -182,16 +182,25 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           video: videoConstraints,
         })
       } catch (err: any) {
-        // Firefox may throw NotFoundError if one of the devices (mic/cam) is missing.
-        if (err && (err.name === 'NotFoundError' || err.name === 'OverconstrainedError' || err.name === 'OverConstrainedError')) {
+        // Handle a wider set of errors by falling back to simpler constraints
+        const name = err?.name
+        console.warn('getUserMedia(audio+video) failed', { name, err })
+        if (
+          name === 'NotFoundError' ||
+          name === 'OverconstrainedError' ||
+          name === 'OverConstrainedError' ||
+          name === 'NotReadableError'
+        ) {
           try {
             // Try audio-only
             stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
           } catch (err2: any) {
+            console.warn('getUserMedia(audio-only) failed', { name: err2?.name, err: err2 })
             try {
               // Try video-only
               stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
             } catch (err3: any) {
+              console.warn('getUserMedia(video-only) failed — using empty MediaStream', { name: err3?.name, err: err3 })
               // As a last resort (no devices at all), proceed with an empty stream
               stream = new MediaStream()
             }
@@ -326,9 +335,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
     }
 
-    start().catch(err => {
-      console.error(err)
-      setStatus('Ошибка инициализации: ' + err)
+    start().catch((err: any) => {
+      const name = err?.name || 'Error'
+      const message = err?.message || String(err)
+      console.error('Initialization failed', err)
+      setStatus(`Ошибка инициализации: ${name}${message ? ': ' + message : ''}`)
     })
 
     return () => {
