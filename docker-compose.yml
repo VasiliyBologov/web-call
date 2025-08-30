@@ -15,9 +15,10 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        # Provide your ICE servers JSON here or leave empty [] for LAN/local tests
-        VITE_ICE_JSON: |
-          []
+        VITE_API_BASE: ${VITE_API_BASE:-}
+        VITE_WS_BASE: ${VITE_WS_BASE:-}
+        # Provide your ICE servers JSON here or via .env as VITE_ICE_JSON (single-line JSON). Defaults to [].
+        VITE_ICE_JSON: "${VITE_ICE_JSON:-[]}"
         # Optional: force TURN-only routing in restrictive networks ("relay" or "all")
         VITE_ICE_TRANSPORT_POLICY: ${VITE_ICE_TRANSPORT_POLICY:-}
     depends_on:

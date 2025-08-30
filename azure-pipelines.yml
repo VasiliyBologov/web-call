@@ -68,6 +68,10 @@ stages:
                   --registry "$(acrName)" \
                   --image "$(frontendImageName):$(imageTag)" \
                   --file frontend/Dockerfile \
+                  --build-arg VITE_API_BASE="$(VITE_API_BASE)" \
+                  --build-arg VITE_WS_BASE="$(VITE_WS_BASE)" \
+                  --build-arg VITE_ICE_JSON="$(VITE_ICE_JSON)" \
+                  --build-arg VITE_ICE_TRANSPORT_POLICY="$(VITE_ICE_TRANSPORT_POLICY)" \
                   .
 
           - script: |

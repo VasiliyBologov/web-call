@@ -102,6 +102,19 @@ npm run dev
 ```
 В `docker-compose.yml` это поле прокидывается как build‑arg в образ фронтенда.
 
+Проще всего передавать ICE‑настройки через файл `.env` рядом с `docker-compose.yml` (см. `.env.example`). Обязательно указывайте `VITE_ICE_JSON` одной строкой:
+
+```
+VITE_ICE_JSON=[{"urls":["stun:turn.example.video:3478"]},{"urls":["turn:turn.example.video:3478?transport=udp","turn:turn.example.video:3478?transport=tcp","turns:turn.example.video:5349?transport=tcp"],"username":"user","credential":"secret"}]
+VITE_ICE_TRANSPORT_POLICY=all
+```
+
+После изменения `.env` выполните пересборку, чтобы переменная попала в статический бандл фронтенда:
+
+```bash
+docker compose up --build -d
+```
+
 Также можно задать `PUBLIC_BASE_URL` для бэкенда (используется при генерации абсолютной ссылки `/api/rooms`).
 
 

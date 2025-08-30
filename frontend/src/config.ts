@@ -8,13 +8,21 @@ const rawHost = isBrowser ? window.location.hostname : 'localhost'
 const isDockerBridgeIP = (h: string) => /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)
 const apiHost = isDockerBridgeIP(rawHost) ? 'localhost' : rawHost
 
-// Resolve API/WS base dynamically:
-// - Dev (Vite on 5173): use :8000 for backend
-// - Prod (App Service behind 80/443): same host, default port (no explicit :8000)
-const port = isBrowser ? window.location.port : ''
-const apiHostPort = port === '5173' ? `${apiHost}:8000` : rawHost
-const API_BASE = `${proto}://${apiHostPort}`
-const WS_BASE = `${wsProto}://${apiHostPort}`
+// Resolve API/WS base:
+// - Dev (Vite dev server): talk to backend on :8000
+// - Prod (built app behind nginx): same-origin (nginx proxies /api and /ws)
+// - Optional explicit override via VITE_API_BASE / VITE_WS_BASE
+const DEV = typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV
+const ENV_API_BASE = (import.meta as any).env?.VITE_API_BASE as string | undefined
+const ENV_WS_BASE = (import.meta as any).env?.VITE_WS_BASE as string | undefined
+
+const API_BASE = ENV_API_BASE
+  ? ENV_API_BASE
+  : (DEV ? `${proto}://${apiHost}:8000` : `${proto}://${isBrowser ? window.location.host : rawHost}`)
+
+const WS_BASE = ENV_WS_BASE
+  ? ENV_WS_BASE
+  : (DEV ? `${wsProto}://${apiHost}:8000` : `${wsProto}://${isBrowser ? window.location.host : rawHost}`)
 
 // Only ICE can be injected via build-time env; API/WS are resolved at runtime from window.location.
 // Provide a sensible default STUN server so two peers can connect in most NAT scenarios out of the box.
