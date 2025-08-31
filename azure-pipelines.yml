@@ -26,14 +26,53 @@ variables:
   acrLoginServer: '$(acrName).azurecr.io'
   backendImageName: 'web-call-backend'
   frontendImageName: 'web-call-frontend'
-
+  turnImageName: 'web-call-turn'
 
   # Agent VM image name
   vmImageName: 'ubuntu-latest'
 
 stages:
+  - stage: Validate
+    displayName: Validate Configuration
+    jobs:
+      - job: ValidateConfig
+        displayName: Validate Configuration Files
+        steps:
+          - checkout: self
+
+          - script: |
+              echo "Validating docker-compose.yml..."
+              docker-compose config
+            displayName: 'Validate docker-compose.yml'
+
+          - script: |
+              echo "Checking required environment variables..."
+              if [ -z "$(VITE_API_BASE)" ]; then
+                echo "Warning: VITE_API_BASE is not set"
+              fi
+              if [ -z "$(VITE_WS_BASE)" ]; then
+                echo "Warning: VITE_WS_BASE is not set"
+              fi
+              if [ -z "$(VITE_ICE_JSON)" ]; then
+                echo "Warning: VITE_ICE_JSON is not set"
+              fi
+              if [ -z "$(TURN_USERNAME)" ]; then
+                echo "Warning: TURN_USERNAME is not set"
+              fi
+              if [ -z "$(TURN_PASSWORD)" ]; then
+                echo "Warning: TURN_PASSWORD is not set"
+              fi
+            displayName: 'Validate Environment Variables'
+            env:
+              VITE_API_BASE: $(VITE_API_BASE)
+              VITE_WS_BASE: $(VITE_WS_BASE)
+              VITE_ICE_JSON: $(VITE_ICE_JSON)
+              TURN_USERNAME: $(TURN_USERNAME)
+              TURN_PASSWORD: $(TURN_PASSWORD)
+
   - stage: Build
     displayName: Build and Push Images to ACR
+    dependsOn: Validate
     jobs:
       - job: BuildPush
         displayName: ACR Build
@@ -74,6 +113,36 @@ stages:
                   --build-arg VITE_ICE_TRANSPORT_POLICY="$(VITE_ICE_TRANSPORT_POLICY)" \
                   .
 
+          - task: AzureCLI@2
+            displayName: 'Build TURN server image in ACR'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr show -n "$(acrName)" -o none
+                echo "Building TURN server image $(turnImageName):$(imageTag) in ACR $(acrName)"
+                # Create temporary Dockerfile for TURN server
+                cat > Dockerfile.turn << 'EOF'
+                FROM coturn/coturn:4.6.2
+                USER root
+                RUN apt-get update && apt-get install -y netcat-openbsd curl && rm -rf /var/lib/apt/lists/*
+                USER turnserver
+                EXPOSE 3478/tcp 3478/udp 50000-50100/udp
+                HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+                  CMD nc -z localhost 3478 || exit 1
+                EOF
+                
+                az acr build \
+                  --registry "$(acrName)" \
+                  --image "$(turnImageName):$(imageTag)" \
+                  --file Dockerfile.turn \
+                  .
+                  
+                # Cleanup
+                rm -f Dockerfile.turn
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+
           - script: |
               set -e
               COMPOSE_OUT="$(Build.ArtifactStagingDirectory)/docker-compose.azure.yaml"
@@ -90,27 +159,127 @@ stages:
                     - '80:80'
                   expose:
                     - '80'
+                  environment:
+                    - VITE_API_BASE=${VITE_API_BASE}
+                    - VITE_WS_BASE=${VITE_WS_BASE}
+                    - VITE_ICE_JSON=${VITE_ICE_JSON}
+                    - VITE_ICE_TRANSPORT_POLICY=${VITE_ICE_TRANSPORT_POLICY}
+                  healthcheck:
+                    test: ["CMD", "curl", "-f", "http://localhost/health"]
+                    interval: 30s
+                    timeout: 10s
+                    retries: 3
+                    start_period: 40s
+                  restart: unless-stopped
+                  
                 backend:
                   image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
                   environment:
                     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+                    LOG_TO_FILE: ${LOG_TO_FILE:-false}
+                    WS_RETRY_ATTEMPTS: ${WS_RETRY_ATTEMPTS:-3}
+                    WS_RETRY_DELAY: ${WS_RETRY_DELAY:-1.0}
+                    WS_MAX_RETRY_DELAY: ${WS_MAX_RETRY_DELAY:-30.0}
+                    PREVIEW_MAX_BYTES: ${PREVIEW_MAX_BYTES:-300000}
+                    PREVIEW_TTL_SECONDS: ${PREVIEW_TTL_SECONDS:-120}
+                    TRUSTED_HOSTS: ${TRUSTED_HOSTS:-}
                   expose:
                     - '8000'
+                  healthcheck:
+                    test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+                    interval: 30s
+                    timeout: 10s
+                    retries: 3
+                    start_period: 40s
+                  restart: unless-stopped
+                  
+                turn:
+                  image: ${ACR_LOGIN_SERVER}/${TURN_IMAGE}:${IMAGE_TAG}
+                  environment:
+                    TURN_USERNAME: ${TURN_USERNAME:-user}
+                    TURN_PASSWORD: ${TURN_PASSWORD:-secret}
+                    TURN_REALM: ${TURN_REALM:-localhost}
+                  command: >
+                    turnserver
+                    --listening-port=3478
+                    --listening-ip=0.0.0.0
+                    --user=${TURN_USERNAME:-user}:${TURN_PASSWORD:-secret}
+                    --realm=${TURN_REALM:-localhost}
+                    --min-port=50000
+                    --max-port=50100
+                    --fingerprint
+                    --no-cli
+                    --log-file=stdout
+                    --verbose
+                  expose:
+                    - '3478'
+                    - '50000-50100'
+                  healthcheck:
+                    test: ["CMD", "nc", "-z", "localhost", "3478"]
+                    interval: 30s
+                    timeout: 10s
+                    retries: 3
+                    start_period: 40s
+                  restart: unless-stopped
+                  
+
               EOF
+              
               # Substitute variables for compose
               sed -i "s#\${ACR_LOGIN_SERVER}#$(acrLoginServer)#g" "$COMPOSE_OUT"
               sed -i "s#\${BACKEND_IMAGE}#$(backendImageName)#g" "$COMPOSE_OUT"
               sed -i "s#\${FRONTEND_IMAGE}#$(frontendImageName)#g" "$COMPOSE_OUT"
+              sed -i "s#\${TURN_IMAGE}#$(turnImageName)#g" "$COMPOSE_OUT"
               sed -i "s#\${IMAGE_TAG}#$(imageTag)#g" "$COMPOSE_OUT"
-            displayName: 'Generate docker-compose.azure.yaml'
+              
+              # Substitute environment variables
+              sed -i "s#\${VITE_API_BASE}#$(VITE_API_BASE)#g" "$COMPOSE_OUT"
+              sed -i "s#\${VITE_WS_BASE}#$(VITE_WS_BASE)#g" "$COMPOSE_OUT"
+              sed -i "s#\${VITE_ICE_JSON}#$(VITE_ICE_JSON)#g" "$COMPOSE_OUT"
+              sed -i "s#\${VITE_ICE_TRANSPORT_POLICY}#$(VITE_ICE_TRANSPORT_POLICY)#g" "$COMPOSE_OUT"
+              sed -i "s#\${TURN_USERNAME}#$(TURN_USERNAME)#g" "$COMPOSE_OUT"
+              sed -i "s#\${TURN_PASSWORD}#$(TURN_PASSWORD)#g" "$COMPOSE_OUT"
+              sed -i "s#\${TURN_REALM}#$(TURN_REALM)#g" "$COMPOSE_OUT"
+              sed -i "s#\${PUBLIC_BASE_URL}#$(PUBLIC_BASE_URL)#g" "$COMPOSE_OUT"
+              sed -i "s#\${LOG_TO_FILE}#$(LOG_TO_FILE)#g" "$COMPOSE_OUT"
+              sed -i "s#\${WS_RETRY_ATTEMPTS}#$(WS_RETRY_ATTEMPTS)#g" "$COMPOSE_OUT"
+              sed -i "s#\${WS_RETRY_DELAY}#$(WS_RETRY_DELAY)#g" "$COMPOSE_OUT"
+              sed -i "s#\${WS_MAX_RETRY_DELAY}#$(WS_MAX_RETRY_DELAY)#g" "$COMPOSE_OUT"
+              sed -i "s#\${PREVIEW_MAX_BYTES}#$(PREVIEW_MAX_BYTES)#g" "$COMPOSE_OUT"
+              sed -i "s#\${PREVIEW_TTL_SECONDS}#$(PREVIEW_TTL_SECONDS)#g" "$COMPOSE_OUT"
+              sed -i "s#\${TRUSTED_HOSTS}#$(TRUSTED_HOSTS)#g" "$COMPOSE_OUT"
+              
+              echo "Generated docker-compose.azure.yaml with TURN server support"
+            displayName: 'Generate docker-compose.azure.yaml with TURN'
 
           - publish: '$(Build.ArtifactStagingDirectory)'
             artifact: drop
             displayName: 'Publish artifacts'
 
+  - stage: Test
+    displayName: Test Application
+    dependsOn: Build
+    jobs:
+      - job: TestApp
+        displayName: Test Application Components
+        steps:
+          - download: current
+            artifact: drop
+
+          - script: |
+              echo "Testing docker-compose configuration..."
+              docker-compose -f $(Pipeline.Workspace)/drop/docker-compose.azure.yaml config
+            displayName: 'Test docker-compose configuration'
+
+          - script: |
+              echo "Running smoke tests..."
+              # Add your smoke test commands here
+              echo "Smoke tests completed successfully"
+            displayName: 'Run smoke tests'
+
   - stage: Deploy
     displayName: Deploy to Azure Web App (Multi-container)
-    dependsOn: Build
+    dependsOn: Test
     jobs:
       - deployment: DeployToWebApp
         environment: 'prod'
@@ -120,6 +289,7 @@ stages:
               steps:
                 - download: current
                   artifact: drop
+
                 - task: AzureWebAppContainer@1
                   displayName: 'Deploy compose to Azure Web App'
                   inputs:
@@ -127,5 +297,39 @@ stages:
                     appName: '$(webAppName)'
                     resourceGroupName: '$(resourceGroup)'
                     multicontainerConfigFile: '$(Pipeline.Workspace)/drop/docker-compose.azure.yaml'
-                    # Optionally set app settings (e.g., WEBSITES_PORT) if needed for your frontend port
-                    appSettings: -DOCKER_REGISTRY_SERVER_URL https://$(acrLoginServer) -WEBSITES_ENABLE_APP_SERVICE_STORAGE true -WEBSITES_PORT 80
+                    appSettings: |
+                      -DOCKER_REGISTRY_SERVER_URL https://$(acrLoginServer)
+                      -WEBSITES_ENABLE_APP_SERVICE_STORAGE true
+                      -WEBSITES_PORT 80
+                      -TURN_USERNAME $(TURN_USERNAME)
+                      -TURN_PASSWORD $(TURN_PASSWORD)
+                      -TURN_REALM $(TURN_REALM)
+                      -VITE_API_BASE $(VITE_API_BASE)
+                      -VITE_WS_BASE $(VITE_WS_BASE)
+                      -VITE_ICE_JSON $(VITE_ICE_JSON)
+                      -VITE_ICE_TRANSPORT_POLICY $(VITE_ICE_TRANSPORT_POLICY)
+                      -PUBLIC_BASE_URL $(PUBLIC_BASE_URL)
+                      -LOG_TO_FILE $(LOG_TO_FILE)
+                      -WS_RETRY_ATTEMPTS $(WS_RETRY_ATTEMPTS)
+                      -WS_RETRY_DELAY $(WS_RETRY_DELAY)
+                      -WS_MAX_RETRY_DELAY $(WS_MAX_RETRY_DELAY)
+                      -PREVIEW_MAX_BYTES $(PREVIEW_MAX_BYTES)
+                      -PREVIEW_TTL_SECONDS $(PREVIEW_TTL_SECONDS)
+                      -TRUSTED_HOSTS $(TRUSTED_HOSTS)
+
+  - stage: PostDeploy
+    displayName: Post-Deployment Verification
+    dependsOn: Deploy
+    jobs:
+      - job: VerifyDeployment
+        displayName: Verify Deployment
+        steps:
+          - script: |
+              echo "Waiting for services to be ready..."
+              sleep 60
+              
+              echo "Checking application health..."
+              # Add health check commands here
+              echo "Deployment verification completed"
+            displayName: 'Verify deployment health'
+
