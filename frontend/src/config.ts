@@ -24,16 +24,15 @@ const WS_BASE = ENV_WS_BASE
   ? ENV_WS_BASE
   : (DEV ? `${wsProto}://${apiHost}:8000` : `${wsProto}://${isBrowser ? window.location.host : rawHost}`)
 
-// Only ICE can be injected via build-time env; API/WS are resolved at runtime from window.location.
-// Provide a sensible default STUN server so two peers can connect in most NAT scenarios out of the box.
+// Enhanced ICE configuration with better TURN support
+// Use our own TURN server as the default instead of Google STUN servers
 const DEFAULT_ICE_JSON = JSON.stringify([
   { urls: [
-    'stun:stun.l.google.com:19302',
-    'stun:stun1.l.google.com:19302',
-    'stun:stun2.l.google.com:19302',
-    'stun:stun3.l.google.com:19302',
-    'stun:stun4.l.google.com:19302'
-  ] }
+    'stun:localhost:3478'
+  ] },
+  { urls: [
+    'turn:localhost:3478?transport=udp'
+  ], username: 'user', credential: 'secret' }
 ])
 
 const RAW_ICE = import.meta.env.VITE_ICE_JSON as string | undefined
@@ -87,7 +86,7 @@ function normalizeIceServers(raw: any, policy: RTCIceTransportPolicy, dev: boole
     deduped.push(e)
   }
 
-  // Prioritize TURN over STUN
+  // Prioritize TURN over STUN for better reliability
   const turns = deduped.filter(e => e.url.toLowerCase().startsWith('turn'))
   const stuns = deduped.filter(e => e.url.toLowerCase().startsWith('stun'))
 
@@ -107,6 +106,7 @@ function normalizeIceServers(raw: any, policy: RTCIceTransportPolicy, dev: boole
     try {
       // eslint-disable-next-line no-console
       console.debug('[ICE] Using', servers.length, 'ICE URLs', isFirefox() ? '(firefox cap applied)' : '')
+      console.debug('[ICE] TURN servers:', turns.length, 'STUN servers:', stuns.length)
     } catch {}
   }
 

@@ -617,6 +617,29 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  function getTurnServerInfo(): { count: number; hasTls: boolean; hasUdp: boolean } {
+    try {
+      const turnServers = (ICE_SERVERS || []).filter(s => {
+        const urls: any = (s as any)?.urls
+        const list: string[] = Array.isArray(urls) ? urls as any : (typeof urls === 'string' ? [urls] : [])
+        return list.some(u => typeof u === 'string' && (u.startsWith('turn:') || u.startsWith('turns:')))
+      })
+      
+      const urls = turnServers.flatMap(s => {
+        const urls: any = (s as any)?.urls
+        return Array.isArray(urls) ? urls : (typeof urls === 'string' ? [urls] : [])
+      })
+      
+      return {
+        count: turnServers.length,
+        hasTls: urls.some(u => typeof u === 'string' && u.startsWith('turns:')),
+        hasUdp: urls.some(u => typeof u === 'string' && u.startsWith('turn:') && !u.includes('transport=tcp'))
+      }
+    } catch {
+      return { count: 0, hasTls: false, hasUdp: false }
+    }
+  }
+
   function isSafariLike(): boolean {
     const ua = navigator.userAgent || ''
     const isIOS = /iPhone|iPad|iPod/i.test(ua)
@@ -757,16 +780,19 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }, 5000)
       } else if (state === 'failed') {
         attemptIceRestart()
-        // Escalate to TURN-only if available and not already in relay mode
+        // Enhanced TURN fallback with better diagnostics
         const policy = (pc as any).__policy || ICE_TRANSPORT_POLICY
+        const turnInfo = getTurnServerInfo()
+        
         if (policy !== 'relay' && hasTurnConfigured()) {
-          recreatePeerConnectionRelay().catch(err => console.warn('relay fallback failed', err))
+          console.log('[ICE] Attempting TURN relay fallback...', turnInfo)
+          recreatePeerConnectionRelay().catch(err => {
+            console.warn('relay fallback failed', err)
+            showTurnError(turnInfo)
+          })
         } else if (!hasTurnConfigured()) {
           if (!hasEverConnectedRef.current) {
-            setRecover({
-              title: 'Не удалось установить медиасоединение',
-              details: 'Вероятно, сеть блокирует прямое P2P‑соединение. Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
-            })
+            showTurnError(turnInfo)
           } else {
             setStatus('ожидание переподключения собеседника…')
           }
@@ -778,6 +804,17 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         send({ type: 'candidate', peerId: peerIdRef.current, candidate: ev.candidate })
       }
     }
+  }
+
+  function showTurnError(turnInfo: { count: number; hasTls: boolean; hasUdp: boolean }) {
+    const details = turnInfo.count === 0 
+      ? 'Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
+      : `Настроено ${turnInfo.count} TURN серверов. Проверьте доступность портов ${turnInfo.hasUdp ? '3478/UDP, ' : ''}${turnInfo.hasTls ? '5349/TLS' : ''} и настройки firewall.`
+    
+    setRecover({
+      title: 'Не удалось установить медиасоединение',
+      details: details
+    })
   }
 
   async function recreatePeerConnectionRelay() {

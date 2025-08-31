@@ -1,11 +1,11 @@
 # Frontend Dockerfile (Vite build + preview)
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY frontend/package.json ./
-COPY frontend/tsconfig.json ./
-COPY frontend/vite.config.ts ./
-COPY frontend/index.html ./
-COPY frontend/src ./src
+COPY package.json ./
+COPY tsconfig.json ./
+COPY vite.config.ts ./
+COPY index.html ./
+COPY src ./src
 RUN npm ci || npm i
 # Build with defaults; override via build args if needed
 ARG VITE_API_BASE
@@ -22,6 +22,6 @@ FROM nginx:alpine AS runner
 # Copy built static files to nginx html directory
 COPY --from=build /app/dist /usr/share/nginx/html
 # Nginx config for SPA + API/WS proxy to backend service
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
