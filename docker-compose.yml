@@ -1,6 +1,8 @@
 services:
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: webcall-backend
     ports:
       - "8000:8000"
@@ -35,8 +37,9 @@ services:
           cpus: '0.25'
 
   frontend:
-    build: 
-      context: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_ICE_JSON: ${VITE_ICE_JSON:-[]}
         VITE_ICE_TRANSPORT_POLICY: ${VITE_ICE_TRANSPORT_POLICY:-all}
