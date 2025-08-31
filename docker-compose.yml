@@ -41,6 +41,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
+        VITE_API_BASE: ${VITE_API_BASE:-}
+        VITE_WS_BASE: ${VITE_WS_BASE:-}
         VITE_ICE_JSON: ${VITE_ICE_JSON:-[]}
         VITE_ICE_TRANSPORT_POLICY: ${VITE_ICE_TRANSPORT_POLICY:-all}
     container_name: webcall-frontend

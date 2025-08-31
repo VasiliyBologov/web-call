@@ -15,14 +15,19 @@ const apiHost = isDockerBridgeIP(rawHost) ? 'localhost' : rawHost
 const DEV = typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV
 const ENV_API_BASE = (import.meta as any).env?.VITE_API_BASE as string | undefined
 const ENV_WS_BASE = (import.meta as any).env?.VITE_WS_BASE as string | undefined
+const IS_PROD = (import.meta as any).env?.VITE_IS_PROD as string | undefined
+
+// Fallback для production режима - если import.meta.env.DEV не определен, считаем что это production
+const isDev = DEV === true || IS_PROD === 'false'
+const isProd = DEV === false || IS_PROD === 'true' || (typeof DEV === 'undefined' && typeof window !== 'undefined')
 
 const API_BASE = ENV_API_BASE
   ? ENV_API_BASE
-  : (DEV ? `${proto}://${apiHost}:8000` : `${proto}://${isBrowser ? window.location.host : rawHost}`)
+  : (isDev ? `${proto}://${apiHost}:8000` : `${proto}://${isBrowser ? window.location.host : rawHost}`)
 
 const WS_BASE = ENV_WS_BASE
   ? ENV_WS_BASE
-  : (DEV ? `${wsProto}://${apiHost}:8000` : `${wsProto}://${isBrowser ? window.location.host : rawHost}`)
+  : (isDev ? `${wsProto}://${apiHost}:8000` : `${wsProto}://${isBrowser ? window.location.host : rawHost}`)
 
 // Enhanced ICE configuration with better TURN support
 // Use our own TURN server as the default instead of Google STUN servers

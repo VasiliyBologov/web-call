@@ -12,7 +12,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import uvicorn
 
 from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
@@ -29,46 +28,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("webcall")
 
-# Глобальные метрики для мониторинга
-class Metrics:
-    def __init__(self):
-        self.active_connections = 0
-        self.total_connections = 0
-        self.failed_connections = 0
-        self.websocket_errors = 0
-        self.api_errors = 0
-        self.start_time = time.time()
-    
-    def connection_established(self):
-        self.active_connections += 1
-        self.total_connections += 1
-    
-    def connection_closed(self):
-        self.active_connections = max(0, self.active_connections - 1)
-    
-    def connection_failed(self):
-        self.failed_connections += 1
-    
-    def websocket_error(self):
-        self.websocket_errors += 1
-    
-    def api_error(self):
-        self.api_errors += 1
-    
-    def get_stats(self):
-        uptime = time.time() - self.start_time
-        return {
-            "uptime_seconds": uptime,
-            "active_connections": self.active_connections,
-            "total_connections": self.total_connections,
-            "failed_connections": self.failed_connections,
-            "websocket_errors": self.websocket_errors,
-            "api_errors": self.api_errors,
-            "error_rate": (self.failed_connections + self.websocket_errors + self.api_errors) / max(1, self.total_connections)
-        }
-
-metrics = Metrics()
-
 # Конфигурация приложения
 app = FastAPI(
     title="Web Call Signaling", 
@@ -84,13 +43,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Trusted Host middleware для безопасности
-if os.getenv('TRUSTED_HOSTS'):
-    app.add_middleware(
-        TrustedHostMiddleware, 
-        allowed_hosts=os.getenv('TRUSTED_HOSTS').split(',')
-    )
 
 store = RoomStore()
 
@@ -113,41 +65,25 @@ async def on_shutdown():
             except Exception as e:
                 logger.warning(f"Error closing WebSocket for {token}/{peer_id}: {e}")
 
-# Улучшенный health check с детальной информацией
+# Упрощенный health check
 @app.get("/api/health")
 async def health():
-    """Расширенный health check с метриками"""
+    """Простой health check"""
     try:
         # Проверяем доступность хранилища комнат
         room_count = len(store.rooms) if hasattr(store, 'rooms') else 0
         
-        # Получаем статистику
-        stats = metrics.get_stats()
-        
-        # Определяем статус сервиса
-        health_status = "healthy"
-        if stats["error_rate"] > 0.1:  # Более 10% ошибок
-            health_status = "degraded"
-        if stats["error_rate"] > 0.3:  # Более 30% ошибок
-            health_status = "unhealthy"
-        
         return {
-            "status": health_status,
+            "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
             "version": "1.0",
-            "metrics": stats,
             "rooms": {
                 "active": room_count,
                 "store_available": True
-            },
-            "websocket": {
-                "active_connections": stats["active_connections"],
-                "total_connections": stats["total_connections"]
             }
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
-        metrics.api_error()
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
@@ -165,7 +101,6 @@ async def debug_info():
         return {
             "server_info": {
                 "pid": os.getpid(),
-                "uptime": time.time() - metrics.start_time,
                 "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}"
             },
             "environment": {
@@ -177,12 +112,10 @@ async def debug_info():
                 "active_rooms": len(connections),
                 "total_peers": sum(len(peers) for peers in connections.values()),
                 "room_tokens": list(connections.keys())
-            },
-            "metrics": metrics.get_stats()
+            }
         }
     except Exception as e:
         logger.error(f"Debug info failed: {e}")
-        metrics.api_error()
         raise HTTPException(status_code=500, detail=f"Debug info unavailable: {str(e)}")
 
 @app.post("/api/rooms", response_model=CreateRoomResponse)
@@ -214,7 +147,6 @@ async def create_room():
         )
     except Exception as e:
         logger.error(f"Failed to create room: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create room: {str(e)}"
@@ -244,7 +176,6 @@ async def get_room(token: str):
         )
     except Exception as e:
         logger.error(f"Failed to get room {token}: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get room info: {str(e)}"
@@ -281,15 +212,12 @@ async def send_error(ws: WebSocket, code: str, message: str, details: Optional[s
 async def websocket_connection_manager(ws: WebSocket, token: str, peer_id: Optional[str] = None):
     """Контекстный менеджер для управления WebSocket соединениями"""
     try:
-        metrics.connection_established()
         logger.info(f"WebSocket connection established: token={token}, peer={peer_id}")
         yield ws
     except Exception as e:
         logger.error(f"WebSocket connection error: token={token}, peer={peer_id}, error={e}")
-        metrics.websocket_error()
         raise
     finally:
-        metrics.connection_closed()
         logger.info(f"WebSocket connection closed: token={token}, peer={peer_id}")
 
 async def handle_websocket_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -478,7 +406,6 @@ async def ws_room(ws: WebSocket, token: str):
                     
                 except Exception as e:
                     logger.error(f"Unexpected error in WebSocket loop: {e}")
-                    metrics.websocket_error()
                     retry_count += 1
                     if retry_count >= WS_RETRY_ATTEMPTS:
                         break
@@ -486,7 +413,6 @@ async def ws_room(ws: WebSocket, token: str):
                     
         except Exception as e:
             logger.error(f"Critical WebSocket error: {e}")
-            metrics.websocket_error()
         finally:
             # Очистка при отключении
             if peer_id:
@@ -592,7 +518,6 @@ async def admin_connections():
         
     except Exception as e:
         logger.error(f"Admin connections endpoint failed: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get connections info: {str(e)}"
@@ -635,7 +560,6 @@ async def admin_disconnect(token: str, peer_id: str):
         raise
     except Exception as e:
         logger.error(f"Admin disconnect failed: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to disconnect peer: {str(e)}"
@@ -718,7 +642,6 @@ async def admin_upload_preview(token: str, peer_id: str, request: Request):
         raise
     except Exception as e:
         logger.error(f"Preview upload failed: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload preview: {str(e)}"
@@ -753,7 +676,6 @@ async def admin_get_preview(token: str, peer_id: str):
         raise
     except Exception as e:
         logger.error(f"Preview retrieval failed: {e}")
-        metrics.api_error()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve preview: {str(e)}"
