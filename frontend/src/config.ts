@@ -41,12 +41,86 @@ export const ICE_JSON = (!RAW_ICE || RAW_ICE.trim() === '' || RAW_ICE.trim() ===
   ? DEFAULT_ICE_JSON
   : RAW_ICE
 
-export const ICE_SERVERS: RTCIceServer[] = (() => {
+// ICE transport policy: "all" (default) or "relay" (TURN-only)
+const RAW_POLICY = (import.meta.env.VITE_ICE_TRANSPORT_POLICY as string | undefined)?.trim().toLowerCase()
+export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = (RAW_POLICY === 'relay' || RAW_POLICY === 'all')
+  ? (RAW_POLICY as RTCIceTransportPolicy)
+  : 'all'
+
+function isFirefox(): boolean {
+  if (!isBrowser) return false
   try {
-    return JSON.parse(ICE_JSON)
+    const ua = navigator.userAgent || ''
+    return /Firefox\//i.test(ua)
   } catch {
-    return JSON.parse(DEFAULT_ICE_JSON)
+    return false
   }
+}
+
+function normalizeIceServers(raw: any, policy: RTCIceTransportPolicy, dev: boolean): RTCIceServer[] {
+  // Flatten to list of entries with single URL, preserve credentials
+  const entries: { url: string; username?: string; credential?: string }[] = []
+  try {
+    const list = Array.isArray(raw) ? raw : []
+    for (const item of list) {
+      if (!item) continue
+      const urls = (item.urls == null) ? [] : (Array.isArray(item.urls) ? item.urls : [item.urls])
+      const username = item.username
+      const credential = item.credential
+      for (const u of urls) {
+        if (typeof u !== 'string') continue
+        const url = u.trim()
+        if (!url) continue
+        // If relay-only policy, skip STUN to reduce noise
+        if (policy === 'relay' && url.toLowerCase().startsWith('stun:')) continue
+        entries.push({ url, username, credential })
+      }
+    }
+  } catch {}
+
+  // Deduplicate by URL
+  const seen = new Set<string>()
+  const deduped: typeof entries = []
+  for (const e of entries) {
+    if (seen.has(e.url)) continue
+    seen.add(e.url)
+    deduped.push(e)
+  }
+
+  // Prioritize TURN over STUN
+  const turns = deduped.filter(e => e.url.toLowerCase().startsWith('turn'))
+  const stuns = deduped.filter(e => e.url.toLowerCase().startsWith('stun'))
+
+  // Firefox-specific cap: keep at most 4 URLs total (prefer TURN, then STUN)
+  const cap = isFirefox() ? 4 : Infinity
+  const ordered = [...turns, ...stuns]
+  const capped = ordered.slice(0, cap)
+
+  // Rebuild as RTCIceServer objects with single url per entry
+  const servers: RTCIceServer[] = capped.map(e => ({
+    urls: e.url,
+    ...(e.username ? { username: e.username } : {}),
+    ...(e.credential ? { credential: e.credential } : {}),
+  }))
+
+  if (dev) {
+    try {
+      // eslint-disable-next-line no-console
+      console.debug('[ICE] Using', servers.length, 'ICE URLs', isFirefox() ? '(firefox cap applied)' : '')
+    } catch {}
+  }
+
+  return servers
+}
+
+export const ICE_SERVERS: RTCIceServer[] = (() => {
+  let parsed: any
+  try {
+    parsed = JSON.parse(ICE_JSON)
+  } catch {
+    parsed = JSON.parse(DEFAULT_ICE_JSON)
+  }
+  return normalizeIceServers(parsed, ICE_TRANSPORT_POLICY, !!DEV)
 })()
 
 export function api(path: string) {
@@ -56,9 +130,3 @@ export function api(path: string) {
 export function wsUrl(path: string) {
   return `${WS_BASE}${path}`
 }
-
-// ICE transport policy: "all" (default) or "relay" (TURN-only)
-const RAW_POLICY = (import.meta.env.VITE_ICE_TRANSPORT_POLICY as string | undefined)?.trim().toLowerCase()
-export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = (RAW_POLICY === 'relay' || RAW_POLICY === 'all')
-  ? (RAW_POLICY as RTCIceTransportPolicy)
-  : 'all'

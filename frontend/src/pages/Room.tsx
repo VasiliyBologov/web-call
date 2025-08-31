@@ -87,6 +87,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const cleanupPlaybackResumeRef = useRef<(() => void) | null>(null)
   const pendingCandidatesRef = useRef<any[]>([])
   const [recover, setRecover] = useState<{ title: string; details?: string } | null>(null)
+  const hasEverConnectedRef = useRef(false)
+  const wsReconnectAttemptsRef = useRef(0)
+  const wsReconnectTimerRef = useRef<number | null>(null)
+  // Perfect negotiation helpers
+  const isMakingOfferRef = useRef(false)
+  const ignoreOfferRef = useRef(false)
+  const remotePeerIdRef = useRef<string | null>(null)
+  const isPoliteRef = useRef<boolean>(false)
 
   // Admin preview (thumbnail) helpers
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -254,85 +262,156 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         // Even if this fails (e.g., network hiccup), proceed to WS — server will still handle recreation
       }
       setStatus('подключение к сигнализации…')
-      const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        // join immediately; role corrected after room-info
-        send({ type: 'join', peerId: peerIdRef.current, role: 'offerer' })
-        // Send current layout info (will be ignored if no peer yet)
-        sendOrientation(localLayout)
-        setStatus('ожидание собеседника…')
-      }
-
-      ws.onmessage = async ev => {
-        const msg: WSMsg = JSON.parse(ev.data)
-        if (msg.type === 'error') {
-          // Treat all errors generically; backend auto-recreates rooms now
-          setStatus(`Ошибка: ${msg.code}`)
-          return
-        }
-        if (msg.type === 'room-info') {
-          // decide role
-          roleRef.current = (msg.peers?.length ?? 0) > 0 ? 'answerer' : 'offerer'
-          if (roleRef.current === 'offerer') {
-            await makeOffer()
+      function attachWsHandlers(ws: WebSocket) {
+        wsRef.current = ws
+        ws.onopen = () => {
+          // reset ws reconnect backoff
+          wsReconnectAttemptsRef.current = 0
+          if (wsReconnectTimerRef.current) {
+            window.clearTimeout(wsReconnectTimerRef.current)
+            wsReconnectTimerRef.current = null
           }
-        } else if (msg.type === 'peer-joined') {
-          if (roleRef.current === 'offerer') {
-            // Send (or resend) offer once a peer is present
-            await makeOffer()
-          }
-          // Share our current layout to the new peer
+          // join immediately; role corrected after room-info
+          send({ type: 'join', peerId: peerIdRef.current, role: 'offerer' })
+          // Send current layout info (will be ignored if no peer yet)
           sendOrientation(localLayout)
-        } else if (msg.type === 'orientation') {
-          setRemoteLayout(msg.layout)
-        } else if (msg.type === 'offer') {
-          if (!pcRef.current) return
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
-          await flushPendingCandidates()
-          let answer = await pcRef.current.createAnswer()
-          if (isSafariLike() && answer.sdp) {
-            answer = { ...answer, sdp: preferH264(answer.sdp) }
+          // If we're the offerer, proactively (re)send offer on WS reconnection
+          if (pcRef.current && roleRef.current === 'offerer') {
+            makeOffer().catch(e => console.warn('offer on ws open failed', e))
           }
-          await pcRef.current.setLocalDescription(answer)
-          send({ type: 'answer', peerId: peerIdRef.current, sdp: answer })
-          setStatus('в сети')
-        } else if (msg.type === 'answer') {
-          if (!pcRef.current) return
-          await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.sdp))
-          await flushPendingCandidates()
-          setStatus('в сети')
-        } else if (msg.type === 'candidate') {
-          const pc = pcRef.current
-          if (!pc) return
-          const c = msg.candidate
-          if (isEmptyCandidate(c)) {
+          setStatus('ожидание собеседника…')
+        }
+
+        ws.onmessage = async ev => {
+          const msg: WSMsg = JSON.parse(ev.data)
+          if (msg.type === 'error') {
+            // Treat all errors generically; backend auto-recreates rooms now
+            setStatus(`Ошибка: ${msg.code}`)
             return
           }
-          try {
-            if (!pc.remoteDescription) {
-              pendingCandidatesRef.current.push(c)
+          if (msg.type === 'room-info') {
+            // decide role
+            const others = Array.isArray(msg.peers) ? msg.peers : []
+            if (others.length > 0) {
+              ensurePoliteFor(others[0])
+            }
+            roleRef.current = (others.length > 0) ? 'answerer' : 'offerer'
+            if (roleRef.current === 'offerer') {
+              await makeOffer()
+            }
+          } else if (msg.type === 'peer-joined') {
+            ensurePoliteFor((msg as any).peerId)
+            if (roleRef.current === 'offerer') {
+              // Send (or resend) offer once a peer is present
+              await makeOffer()
+            }
+            // Share our current layout to the new peer
+            sendOrientation(localLayout)
+          } else if (msg.type === 'orientation') {
+            setRemoteLayout(msg.layout)
+          } else if (msg.type === 'offer') {
+            const pc = pcRef.current
+            if (!pc) return
+            ensurePoliteFor((msg as any).peerId)
+            const desc = new RTCSessionDescription(msg.sdp)
+            const offerCollision = desc.type === 'offer' && (isMakingOfferRef.current || pc.signalingState !== 'stable')
+            ignoreOfferRef.current = !isPoliteRef.current && offerCollision
+            if (ignoreOfferRef.current) {
+              console.warn('Ignoring offer due to glare (impolite).')
               return
             }
-            await pc.addIceCandidate(c)
-          } catch (e) {
-            console.warn('Failed to add ICE', e)
+            try {
+              if (offerCollision) {
+                await Promise.all([
+                  pc.setLocalDescription({ type: 'rollback' } as any),
+                  pc.setRemoteDescription(desc),
+                ])
+              } else {
+                await pc.setRemoteDescription(desc)
+              }
+              await flushPendingCandidates()
+              let answer = await pc.createAnswer()
+              if (shouldPreferH264() && answer.sdp) {
+                answer = { ...answer, sdp: preferH264(answer.sdp) }
+              }
+              await pc.setLocalDescription(answer)
+              send({ type: 'answer', peerId: peerIdRef.current, sdp: answer })
+              setStatus('в сети')
+            } catch (e) {
+              console.warn('Failed to handle remote offer', e)
+            } finally {
+              // Reset ignore flag after processing
+              ignoreOfferRef.current = false
+            }
+          } else if (msg.type === 'answer') {
+            const pc = pcRef.current
+            if (!pc) return
+            ensurePoliteFor((msg as any).peerId)
+            if (ignoreOfferRef.current) {
+              console.warn('Ignoring answer due to glare handling in progress')
+              return
+            }
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+              await flushPendingCandidates()
+              setStatus('в сети')
+            } catch (e) {
+              console.warn('Failed to handle remote answer', e)
+            }
+          } else if (msg.type === 'candidate') {
+            const pc = pcRef.current
+            if (!pc) return
+            const c = msg.candidate
+            if (isEmptyCandidate(c)) {
+              return
+            }
+            try {
+              if (!pc.remoteDescription) {
+                // During glare handling (impolite side ignoring), drop candidates instead of queueing
+                if (ignoreOfferRef.current) {
+                  return
+                }
+                pendingCandidatesRef.current.push(c)
+                return
+              }
+              await pc.addIceCandidate(c)
+            } catch (e) {
+              console.warn('Failed to add ICE', e)
+            }
+          } else if (msg.type === 'peer-left') {
+            setStatus('собеседник отключился — ожидание переподключения…')
           }
-        } else if (msg.type === 'peer-left') {
-          setStatus('собеседник вышел')
+        }
+
+        ws.onclose = (ev) => {
+          if (closed) return
+          if ((ev as CloseEvent).code === 4403) {
+            setStatus('комната заполнена')
+            setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
+            return
+          }
+          setStatus('сигнализация отключена — переподключение…')
+          // schedule reconnect with exponential backoff, capped
+          const attempt = wsReconnectAttemptsRef.current + 1
+          wsReconnectAttemptsRef.current = attempt
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 15000)
+          if (wsReconnectTimerRef.current) {
+            window.clearTimeout(wsReconnectTimerRef.current)
+          }
+          wsReconnectTimerRef.current = window.setTimeout(() => {
+            if (closed) return
+            try {
+              const next = new WebSocket(wsUrl(`/ws/rooms/${token}`))
+              attachWsHandlers(next)
+            } catch (e) {
+              console.warn('ws reconnect construct failed', e)
+            }
+          }, delay)
         }
       }
 
-      ws.onclose = (ev) => {
-        if (closed) return
-        if ((ev as CloseEvent).code === 4403) {
-          setStatus('комната заполнена')
-          setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
-        } else {
-          setStatus('сигнализация отключена')
-        }
-      }
+      const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
+      attachWsHandlers(ws)
     }
 
     start().catch((err: any) => {
@@ -353,6 +432,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         window.clearTimeout(disconnectedTimerRef.current)
         disconnectedTimerRef.current = null
       }
+      if (wsReconnectTimerRef.current) {
+        window.clearTimeout(wsReconnectTimerRef.current)
+        wsReconnectTimerRef.current = null
+      }
+      wsReconnectAttemptsRef.current = 0
       if (cleanupPlaybackResumeRef.current) {
         cleanupPlaybackResumeRef.current()
       }
@@ -540,6 +624,46 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     return isIOS || isSafari
   }
 
+  function isAndroidLike(): boolean {
+    try {
+      const ua = navigator.userAgent || ''
+      return /Android/i.test(ua)
+    } catch {
+      return false
+    }
+  }
+
+  function isHuaweiLike(): boolean {
+    try {
+      const ua = navigator.userAgent || ''
+      // Huawei Browser often includes these tokens
+      return /HuaweiBrowser|HMSCore|HarmonyOS|EMUI|HONOR/i.test(ua)
+    } catch {
+      return false
+    }
+  }
+
+  function shouldPreferH264(): boolean {
+    try {
+      const force = String((import.meta as any).env?.VITE_FORCE_H264 || '').toLowerCase() === 'true'
+      if (force) return true
+    } catch {}
+    return isSafariLike() || isHuaweiLike() || isAndroidLike()
+  }
+
+  // Determine polite/impolite based on deterministic ordering of peer IDs
+  function ensurePoliteFor(remoteId: string | null | undefined) {
+    if (!remoteId) return
+    remotePeerIdRef.current = remoteId
+    try {
+      const mine = peerIdRef.current || ''
+      // Polite if our id is lexicographically greater than remote
+      isPoliteRef.current = String(mine) > String(remoteId)
+    } catch {
+      isPoliteRef.current = false
+    }
+  }
+
   function preferH264(sdp: string): string {
     try {
       const lines = sdp.split('\n')
@@ -596,17 +720,33 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
       }
     }
+    // Perfect negotiation: when negotiation is needed, create an offer guarded by isMakingOfferRef
+    pc.onnegotiationneeded = async () => {
+      try {
+        if (isMakingOfferRef.current) return
+        isMakingOfferRef.current = true
+        await makeOffer()
+      } catch (e) {
+        console.warn('onnegotiationneeded offer failed', e)
+      } finally {
+        isMakingOfferRef.current = false
+      }
+    }
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState
       setStatus(`ICE: ${state}`)
       if (state === 'connected' || state === 'completed') {
+        hasEverConnectedRef.current = true
         iceRetriesRef.current = 0
         if (disconnectedTimerRef.current) {
           window.clearTimeout(disconnectedTimerRef.current)
           disconnectedTimerRef.current = null
         }
+        setRecover(null)
+        setStatus('в сети')
       }
       if (state === 'disconnected') {
+        setStatus('переподключение…')
         if (disconnectedTimerRef.current) {
           window.clearTimeout(disconnectedTimerRef.current)
         }
@@ -622,10 +762,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         if (policy !== 'relay' && hasTurnConfigured()) {
           recreatePeerConnectionRelay().catch(err => console.warn('relay fallback failed', err))
         } else if (!hasTurnConfigured()) {
-          setRecover({
-            title: 'Не удалось установить медиасоединение',
-            details: 'Вероятно, сеть блокирует прямое P2P‑соединение. Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
-          })
+          if (!hasEverConnectedRef.current) {
+            setRecover({
+              title: 'Не удалось установить медиасоединение',
+              details: 'Вероятно, сеть блокирует прямое P2P‑соединение. Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
+            })
+          } else {
+            setStatus('ожидание переподключения собеседника…')
+          }
         }
       }
     }
@@ -684,15 +828,24 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   async function makeOffer(iceRestart: boolean = false) {
-    if (!pcRef.current) return
-    let offer = await pcRef.current.createOffer(iceRestart ? { iceRestart: true } : undefined)
-    // Prefer H.264 for Safari/iOS interoperability
-    if (isSafariLike() && offer.sdp) {
-      offer = { ...offer, sdp: preferH264(offer.sdp) }
+    const pc = pcRef.current
+    if (!pc) return
+    const ownGuard = !isMakingOfferRef.current
+    if (ownGuard) isMakingOfferRef.current = true
+    try {
+      let offer = await pc.createOffer(iceRestart ? { iceRestart: true } : undefined)
+      // Prefer H.264 for Safari/iOS and Android/Huawei interoperability
+      if (shouldPreferH264() && offer.sdp) {
+        offer = { ...offer, sdp: preferH264(offer.sdp) }
+      }
+      await pc.setLocalDescription(offer)
+      send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
+      setStatus(iceRestart ? 'переподключение…' : 'подключение…')
+    } catch (e) {
+      console.warn('makeOffer failed', e)
+    } finally {
+      if (ownGuard) isMakingOfferRef.current = false
     }
-    await pcRef.current.setLocalDescription(offer)
-    send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
-    setStatus(iceRestart ? 'переподключение…' : 'подключение…')
   }
 
   async function attemptIceRestart() {

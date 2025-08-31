@@ -6,8 +6,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Set
 
-DEFAULT_ROOM_TTL_SECONDS = 7 * 24 * 3600  # 7 days
-EMPTY_ROOM_IDLE_CLOSE_SECONDS = 5 * 60  # 5 minutes
+DEFAULT_ROOM_TTL_SECONDS = 1 * 24 * 3600  # 7 days
+EMPTY_ROOM_IDLE_CLOSE_SECONDS = 50 * 60  # 5 minutes
 MAX_PARTICIPANTS_DEFAULT = 2
 
 
