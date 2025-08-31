@@ -26,7 +26,7 @@ variables:
   acrLoginServer: '$(acrName).azurecr.io'
   backendImageName: 'web-call-backend'
   frontendImageName: 'web-call-frontend'
-  turnImageName: 'web-call-turn'
+
 
   # Agent VM image name
   vmImageName: 'ubuntu-latest'
@@ -74,35 +74,6 @@ stages:
                   --build-arg VITE_ICE_TRANSPORT_POLICY="$(VITE_ICE_TRANSPORT_POLICY)" \
                   .
 
-          - task: AzureCLI@2
-            displayName: 'Build TURN server image in ACR'
-            inputs:
-              azureSubscription: '$(azureSubscription)'
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                az acr show -n "$(acrName)" -o none
-                echo "Building TURN server image $(turnImageName):$(imageTag) in ACR $(acrName)"
-                # Create temporary Dockerfile for TURN server
-                cat > Dockerfile.turn << 'EOF'
-                FROM coturn/coturn:4.6.2
-                USER root
-                RUN apt-get update && apt-get install -y netcat-openbsd curl && rm -rf /var/lib/apt/lists/*
-                USER turnserver
-                EXPOSE 3478/tcp 3478/udp 50000-50100/udp
-                HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-                  CMD nc -z localhost 3478 || exit 1
-                EOF
-                
-                az acr build \
-                  --registry "$(acrName)" \
-                  --image "$(turnImageName):$(imageTag)" \
-                  --file Dockerfile.turn \
-                  .
-                  
-                # Cleanup
-                rm -f Dockerfile.turn
-
           - script: |
               set -e
               COMPOSE_OUT="$(Build.ArtifactStagingDirectory)/docker-compose.azure.yaml"
@@ -125,29 +96,11 @@ stages:
                     PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
                   expose:
                     - '8000'
-                turn:
-                  image: ${ACR_LOGIN_SERVER}/${TURN_IMAGE}:${IMAGE_TAG}
-                  command: >
-                    turnserver
-                    --listening-port=3478
-                    --listening-ip=0.0.0.0
-                    --user=user:secret
-                    --realm=localhost
-                    --min-port=50000
-                    --max-port=50100
-                    --fingerprint
-                    --no-cli
-                    --log-file=stdout
-                    --verbose
-                  expose:
-                    - '3478'
-                    - '50000-50100'
               EOF
               # Substitute variables for compose
               sed -i "s#\${ACR_LOGIN_SERVER}#$(acrLoginServer)#g" "$COMPOSE_OUT"
               sed -i "s#\${BACKEND_IMAGE}#$(backendImageName)#g" "$COMPOSE_OUT"
               sed -i "s#\${FRONTEND_IMAGE}#$(frontendImageName)#g" "$COMPOSE_OUT"
-              sed -i "s#\${TURN_IMAGE}#$(turnImageName)#g" "$COMPOSE_OUT"
               sed -i "s#\${IMAGE_TAG}#$(imageTag)#g" "$COMPOSE_OUT"
             displayName: 'Generate docker-compose.azure.yaml'
 
