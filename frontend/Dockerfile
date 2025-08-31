@@ -6,6 +6,7 @@ COPY tsconfig.json ./
 COPY vite.config.ts ./
 COPY index.html ./
 COPY src ./src
+COPY public ./public
 RUN npm ci || npm i
 # Build with defaults; override via build args if needed
 ARG VITE_API_BASE
@@ -19,6 +20,8 @@ ENV VITE_ICE_TRANSPORT_POLICY=${VITE_ICE_TRANSPORT_POLICY}
 RUN npm run build
 
 FROM nginx:alpine AS runner
+# Install curl for healthcheck
+RUN apk add --no-cache curl
 # Copy built static files to nginx html directory
 COPY --from=build /app/dist /usr/share/nginx/html
 # Nginx config for SPA + API/WS proxy to backend service

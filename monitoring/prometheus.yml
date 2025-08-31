@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Web-call Backend
+  - job_name: 'webcall-backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/api/health'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    honor_labels: true
+
+  # Web-call Frontend (Nginx)
+  - job_name: 'webcall-frontend'
+    static_configs:
+      - targets: ['frontend:8080']
+    metrics_path: '/nginx_status'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    honor_labels: true
+
+  # TURN Server
+  - job_name: 'webcall-turn'
+    static_configs:
+      - targets: ['turn:3478']
+    scrape_interval: 60s
+    scrape_timeout: 10s
+
+  # Node Exporter (если используется)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+  # Docker containers
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['docker.for.mac.localhost:9323']
+    scrape_interval: 30s
+    metrics_path: '/metrics'
+
+  # Custom metrics endpoint
+  - job_name: 'webcall-metrics'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: '/api/debug'
+    scrape_interval: 60s
+    scrape_timeout: 15s
+    honor_labels: true

@@ -10,6 +10,133 @@ import VideocamOffIcon from '@mui/icons-material/VideocamOff'
 import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
 
+// Конфигурация retry логики
+const WS_RETRY_CONFIG = {
+  maxAttempts: 5,
+  baseDelay: 1000,
+  maxDelay: 30000,
+  backoffMultiplier: 2,
+  jitter: 0.1
+}
+
+const API_RETRY_CONFIG = {
+  maxAttempts: 3,
+  baseDelay: 500,
+  maxDelay: 5000,
+  backoffMultiplier: 1.5,
+  jitter: 0.1
+}
+
+// Утилиты для retry логики
+function calculateRetryDelay(attempt: number, config: typeof WS_RETRY_CONFIG): number {
+  const delay = Math.min(
+    config.baseDelay * Math.pow(config.backoffMultiplier, attempt - 1),
+    config.maxDelay
+  )
+  const jitter = delay * config.jitter * (Math.random() - 0.5)
+  return Math.max(0, delay + jitter)
+}
+
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  config: typeof WS_RETRY_CONFIG,
+  onRetry?: (attempt: number, error: any) => void
+): Promise<T> {
+  let lastError: any
+  
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      
+      if (attempt === config.maxAttempts) {
+        throw error
+      }
+      
+      if (onRetry) {
+        onRetry(attempt, error)
+      }
+      
+      const delay = calculateRetryDelay(attempt, config)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+  
+  throw lastError
+}
+
+// Улучшенная диагностика сетевых проблем
+class NetworkDiagnostics {
+  private static instance: NetworkDiagnostics
+  private connectionHistory: Array<{
+    timestamp: number
+    type: 'websocket' | 'api'
+    success: boolean
+    error?: string
+    duration: number
+  }> = []
+
+  static getInstance(): NetworkDiagnostics {
+    if (!NetworkDiagnostics.instance) {
+      NetworkDiagnostics.instance = new NetworkDiagnostics()
+    }
+    return NetworkDiagnostics.instance
+  }
+
+  logConnection(type: 'websocket' | 'api', success: boolean, error?: string, duration?: number) {
+    this.connectionHistory.push({
+      timestamp: Date.now(),
+      type,
+      success,
+      error,
+      duration: duration || 0
+    })
+
+    // Ограничиваем историю последними 100 записями
+    if (this.connectionHistory.length > 100) {
+      this.connectionHistory = this.connectionHistory.slice(-100)
+    }
+
+    if (!success) {
+      console.warn(`Network connection failed:`, { type, error, duration })
+    }
+  }
+
+  getConnectionStats() {
+    const recent = this.connectionHistory.filter(
+      entry => Date.now() - entry.timestamp < 60000 // Последняя минута
+    )
+    
+    const wsStats = recent.filter(entry => entry.type === 'websocket')
+    const apiStats = recent.filter(entry => entry.type === 'api')
+    
+    return {
+      websocket: {
+        total: wsStats.length,
+        successful: wsStats.filter(s => s.success).length,
+        failed: wsStats.filter(s => !s.success).length,
+        successRate: wsStats.length > 0 ? wsStats.filter(s => s.success).length / wsStats.length : 1
+      },
+      api: {
+        total: apiStats.length,
+        successful: apiStats.filter(s => s.success).length,
+        failed: apiStats.filter(s => !s.success).length,
+        successRate: apiStats.length > 0 ? apiStats.filter(s => s.success).length / apiStats.length : 1
+      }
+    }
+  }
+
+  getRecentErrors(): string[] {
+    return this.connectionHistory
+      .filter(entry => !entry.success && entry.error)
+      .slice(-10)
+      .map(entry => `${entry.type}: ${entry.error}`)
+  }
+}
+
+const networkDiagnostics = NetworkDiagnostics.getInstance()
+
 type WSMsg =
   | { type: 'room-info'; peers: string[]; max: number }
   | { type: 'peer-joined'; peerId: string }
@@ -17,7 +144,7 @@ type WSMsg =
   | { type: 'offer' | 'answer'; peerId: string; sdp: any }
   | { type: 'candidate'; peerId: string; candidate: any }
   | { type: 'orientation'; peerId: string; layout: 'portrait' | 'landscape' }
-  | { type: 'error'; code: string; message: string }
+  | { type: 'error'; code: string; message: string; details?: string; timestamp?: string }
 
 function rid() {
   const b = new Uint8Array(8)
@@ -90,6 +217,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const hasEverConnectedRef = useRef(false)
   const wsReconnectAttemptsRef = useRef(0)
   const wsReconnectTimerRef = useRef<number | null>(null)
+  const wsConnectionStateRef = useRef<'connecting' | 'connected' | 'disconnected' | 'failed'>('disconnected')
+  const wsLastErrorRef = useRef<string | null>(null)
+  
   // Perfect negotiation helpers
   const isMakingOfferRef = useRef(false)
   const ignoreOfferRef = useRef(false)
@@ -257,20 +387,45 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       setStatus('проверка ссылки…')
       try {
         // Backend will auto-create or recreate the room for this token
-        await fetch(api(`/api/rooms/${token}`))
+        const startTime = Date.now()
+        await retryOperation(
+          async () => {
+            const response = await fetch(api(`/api/rooms/${token}`))
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+            }
+            return response
+          },
+          API_RETRY_CONFIG,
+          (attempt, error) => {
+            console.warn(`API retry attempt ${attempt}:`, error)
+            setStatus(`повторная попытка API (${attempt})…`)
+          }
+        )
+        networkDiagnostics.logConnection('api', true, undefined, Date.now() - startTime)
       } catch (e) {
+        console.warn('Room check failed, proceeding to WebSocket:', e)
+        networkDiagnostics.logConnection('api', false, e instanceof Error ? e.message : String(e))
         // Even if this fails (e.g., network hiccup), proceed to WS — server will still handle recreation
       }
       setStatus('подключение к сигнализации…')
       function attachWsHandlers(ws: WebSocket) {
         wsRef.current = ws
+        wsConnectionStateRef.current = 'connecting'
+        
         ws.onopen = () => {
+          wsConnectionStateRef.current = 'connected'
+          wsLastErrorRef.current = null
+          
           // reset ws reconnect backoff
           wsReconnectAttemptsRef.current = 0
           if (wsReconnectTimerRef.current) {
             window.clearTimeout(wsReconnectTimerRef.current)
             wsReconnectTimerRef.current = null
           }
+          
+          networkDiagnostics.logConnection('websocket', true)
+          
           // join immediately; role corrected after room-info
           send({ type: 'join', peerId: peerIdRef.current, role: 'offerer' })
           // Send current layout info (will be ignored if no peer yet)
@@ -285,8 +440,23 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         ws.onmessage = async ev => {
           const msg: WSMsg = JSON.parse(ev.data)
           if (msg.type === 'error') {
-            // Treat all errors generically; backend auto-recreates rooms now
+            // Улучшенная обработка ошибок с деталями
+            const errorMessage = msg.details ? `${msg.message}: ${msg.details}` : msg.message
             setStatus(`Ошибка: ${msg.code}`)
+            console.error('WebSocket error received:', { code: msg.code, message: msg.message, details: msg.details, timestamp: msg.timestamp })
+            
+            // Специальная обработка для критических ошибок
+            if (msg.code === 'room_full') {
+              setRecover({ 
+                title: 'Комната заполнена', 
+                details: 'В эту комнату уже подключены максимальное количество участников. Создайте новую ссылку.' 
+              })
+            } else if (msg.code === 'kicked') {
+              setRecover({ 
+                title: 'Отключен администратором', 
+                details: 'Ваше соединение было принудительно закрыто администратором.' 
+              })
+            }
             return
           }
           if (msg.type === 'room-info') {
@@ -385,33 +555,71 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
         ws.onclose = (ev) => {
           if (closed) return
-          if ((ev as CloseEvent).code === 4403) {
+          
+          wsConnectionStateRef.current = 'disconnected'
+          const closeEvent = ev as CloseEvent
+          const closeCode = closeEvent.code
+          const closeReason = closeEvent.reason || 'Unknown reason'
+          
+          networkDiagnostics.logConnection('websocket', false, `Close code: ${closeCode}, reason: ${closeReason}`)
+          wsLastErrorRef.current = `WebSocket closed: ${closeCode} - ${closeReason}`
+          
+          if (closeCode === 4403) {
             setStatus('комната заполнена')
             setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
             return
           }
-          setStatus('сигнализация отключена — переподключение…')
-          // schedule reconnect with exponential backoff, capped
+          
+          // Улучшенная логика переподключения с диагностикой
           const attempt = wsReconnectAttemptsRef.current + 1
           wsReconnectAttemptsRef.current = attempt
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 15000)
+          
+          if (attempt > WS_RETRY_CONFIG.maxAttempts) {
+            wsConnectionStateRef.current = 'failed'
+            setStatus('не удалось подключиться к сигнализации')
+            setRecover({ 
+              title: 'Проблема с подключением', 
+              details: `Не удалось подключиться к серверу после ${attempt} попыток. Проверьте интернет-соединение и попробуйте снова.` 
+            })
+            return
+          }
+          
+          const delay = calculateRetryDelay(attempt, WS_RETRY_CONFIG)
+          setStatus(`сигнализация отключена — переподключение через ${Math.round(delay/1000)}с (${attempt}/${WS_RETRY_CONFIG.maxAttempts})…`)
+          
           if (wsReconnectTimerRef.current) {
             window.clearTimeout(wsReconnectTimerRef.current)
           }
+          
           wsReconnectTimerRef.current = window.setTimeout(() => {
             if (closed) return
             try {
+              console.log(`Attempting WebSocket reconnection #${attempt}...`)
               const next = new WebSocket(wsUrl(`/ws/rooms/${token}`))
               attachWsHandlers(next)
             } catch (e) {
-              console.warn('ws reconnect construct failed', e)
+              console.error('WebSocket reconnection failed:', e)
+              networkDiagnostics.logConnection('websocket', false, e instanceof Error ? e.message : String(e))
             }
           }, delay)
         }
+        
+        ws.onerror = (ev) => {
+          console.error('WebSocket error:', ev)
+          wsLastErrorRef.current = 'WebSocket error occurred'
+          networkDiagnostics.logConnection('websocket', false, 'WebSocket error event')
+        }
       }
 
-      const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
-      attachWsHandlers(ws)
+      // Создание WebSocket с retry логикой
+      try {
+        const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
+        attachWsHandlers(ws)
+      } catch (e) {
+        console.error('Failed to create WebSocket:', e)
+        networkDiagnostics.logConnection('websocket', false, e instanceof Error ? e.message : String(e))
+        throw e
+      }
     }
 
     start().catch((err: any) => {
@@ -1094,15 +1302,33 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   async function createNewRoom() {
     try {
       setStatus('создание новой комнаты…')
-      const res = await fetch(api('/api/rooms'), { method: 'POST' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+      const startTime = Date.now()
+      const data = await retryOperation(
+        async () => {
+          const res = await fetch(api('/api/rooms'), { method: 'POST' })
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+          return res.json()
+        },
+        API_RETRY_CONFIG,
+        (attempt, error) => {
+          console.warn(`Create room retry attempt ${attempt}:`, error)
+          setStatus(`повторная попытка создания комнаты (${attempt})…`)
+        }
+      )
+      
       const url = data?.url || (data?.token ? `/r/${data.token}` : null)
-      if (!url) throw new Error('bad response')
+      if (!url) throw new Error('Invalid response: missing URL')
+      
+      networkDiagnostics.logConnection('api', true, undefined, Date.now() - startTime)
       window.location.href = url
     } catch (e) {
-      console.warn('createNewRoom failed', e)
+      console.error('createNewRoom failed:', e)
+      networkDiagnostics.logConnection('api', false, e instanceof Error ? e.message : String(e))
       setStatus('Не удалось создать комнату')
+      setRecover({ 
+        title: 'Ошибка создания комнаты', 
+        details: 'Не удалось создать новую комнату. Проверьте интернет-соединение и попробуйте снова.' 
+      })
     }
   }
 
@@ -1150,6 +1376,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         )}
         <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
           {status}
+          {wsConnectionStateRef.current === 'failed' && (
+            <div style={{ marginTop: 4, fontSize: 10, opacity: 0.8 }}>
+              WS: {wsLastErrorRef.current || 'Connection failed'}
+            </div>
+          )}
         </div>
         <div style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', display: 'flex', gap: 8, zIndex: 3 }}>
           <Tooltip title={hasMic ? (micOn ? 'Микрофон включен' : 'Микрофон выключен') : 'Микрофон не найден'}>

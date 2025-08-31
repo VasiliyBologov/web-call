@@ -53,6 +53,42 @@
 docker compose up --build
 ```
 Откройте: http://localhost:5173
+
+### Проверка здоровья системы
+
+После запуска проверьте, что все сервисы работают корректно:
+
+```bash
+# Базовая диагностика
+./scripts/health_check.sh
+
+# Сетевая диагностика  
+./scripts/network_diagnostics.sh
+```
+
+### Мониторинг (опционально)
+
+Для запуска с мониторингом и логированием:
+
+```bash
+# Запуск с мониторингом
+docker-compose --profile monitoring up -d
+
+# Запуск с логированием
+docker-compose --profile logging up -d
+
+# Полный стек мониторинга
+docker-compose --profile monitoring --profile logging up -d
+```
+
+Доступ к дашбордам:
+- **Grafana:** http://localhost:3000 (admin/admin)
+- **Prometheus:** http://localhost:9090
+- **Loki:** http://localhost:3100
+
+### Диагностика проблем
+
+Подробная документация по диагностике и устранению проблем доступна в [DIAGNOSTICS.md](DIAGNOSTICS.md).
 - Если хотите открыть с другого устройства в той же сети (LAN), используйте IP вашей хост‑машины: http://<HOST_LAN_IP>:5173 (например, http://192.168.1.50:5173). Также задайте PUBLIC_BASE_URL=http://<HOST_LAN_IP>:5173, чтобы ссылки/QR были корректными для второго устройства.
 
 Проверка:
