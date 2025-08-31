@@ -70,6 +70,7 @@ stages:
                   --registry "$(acrName)" \
                   --image "$(backendImageName):$(imageTag)" \
                   --file backend/Dockerfile \
+                  --context backend \
                   .
 
           - task: AzureCLI@2
