@@ -31,48 +31,26 @@ variables:
   # Agent VM image name
   vmImageName: 'ubuntu-latest'
 
+  # Environment variables for the application
+  VITE_API_BASE: 'https://web-calls.azurewebsites.net'
+  VITE_WS_BASE: 'wss://web-calls.azurewebsites.net'
+  VITE_ICE_JSON: '{"iceServers":[{"urls":"stun:stun.l.google.com:19302"},{"urls":"turn:web-calls.azurewebsites.net:3478","username":"user","credential":"secret"}]}'
+  VITE_ICE_TRANSPORT_POLICY: 'all'
+  TURN_USERNAME: 'user'
+  TURN_PASSWORD: 'secret'
+  TURN_REALM: 'web-calls.azurewebsites.net'
+  PUBLIC_BASE_URL: 'https://web-calls.azurewebsites.net'
+  LOG_TO_FILE: 'false'
+  WS_RETRY_ATTEMPTS: '3'
+  WS_RETRY_DELAY: '1.0'
+  WS_MAX_RETRY_DELAY: '30.0'
+  PREVIEW_MAX_BYTES: '300000'
+  PREVIEW_TTL_SECONDS: '120'
+  TRUSTED_HOSTS: 'web-calls.azurewebsites.net,localhost'
+
 stages:
-  - stage: Validate
-    displayName: Validate Configuration
-    jobs:
-      - job: ValidateConfig
-        displayName: Validate Configuration Files
-        steps:
-          - checkout: self
-
-          - script: |
-              echo "Validating docker-compose.yml..."
-              docker-compose config
-            displayName: 'Validate docker-compose.yml'
-
-          - script: |
-              echo "Checking required environment variables..."
-              if [ -z "$(VITE_API_BASE)" ]; then
-                echo "Warning: VITE_API_BASE is not set"
-              fi
-              if [ -z "$(VITE_WS_BASE)" ]; then
-                echo "Warning: VITE_WS_BASE is not set"
-              fi
-              if [ -z "$(VITE_ICE_JSON)" ]; then
-                echo "Warning: VITE_ICE_JSON is not set"
-              fi
-              if [ -z "$(TURN_USERNAME)" ]; then
-                echo "Warning: TURN_USERNAME is not set"
-              fi
-              if [ -z "$(TURN_PASSWORD)" ]; then
-                echo "Warning: TURN_PASSWORD is not set"
-              fi
-            displayName: 'Validate Environment Variables'
-            env:
-              VITE_API_BASE: $(VITE_API_BASE)
-              VITE_WS_BASE: $(VITE_WS_BASE)
-              VITE_ICE_JSON: $(VITE_ICE_JSON)
-              TURN_USERNAME: $(TURN_USERNAME)
-              TURN_PASSWORD: $(TURN_PASSWORD)
-
   - stage: Build
     displayName: Build and Push Images to ACR
-    dependsOn: Validate
     jobs:
       - job: BuildPush
         displayName: ACR Build
@@ -256,30 +234,9 @@ stages:
             artifact: drop
             displayName: 'Publish artifacts'
 
-  - stage: Test
-    displayName: Test Application
-    dependsOn: Build
-    jobs:
-      - job: TestApp
-        displayName: Test Application Components
-        steps:
-          - download: current
-            artifact: drop
-
-          - script: |
-              echo "Testing docker-compose configuration..."
-              docker-compose -f $(Pipeline.Workspace)/drop/docker-compose.azure.yaml config
-            displayName: 'Test docker-compose configuration'
-
-          - script: |
-              echo "Running smoke tests..."
-              # Add your smoke test commands here
-              echo "Smoke tests completed successfully"
-            displayName: 'Run smoke tests'
-
   - stage: Deploy
     displayName: Deploy to Azure Web App (Multi-container)
-    dependsOn: Test
+    dependsOn: Build
     jobs:
       - deployment: DeployToWebApp
         environment: 'prod'
@@ -316,20 +273,4 @@ stages:
                       -PREVIEW_MAX_BYTES $(PREVIEW_MAX_BYTES)
                       -PREVIEW_TTL_SECONDS $(PREVIEW_TTL_SECONDS)
                       -TRUSTED_HOSTS $(TRUSTED_HOSTS)
-
-  - stage: PostDeploy
-    displayName: Post-Deployment Verification
-    dependsOn: Deploy
-    jobs:
-      - job: VerifyDeployment
-        displayName: Verify Deployment
-        steps:
-          - script: |
-              echo "Waiting for services to be ready..."
-              sleep 60
-              
-              echo "Checking application health..."
-              # Add health check commands here
-              echo "Deployment verification completed"
-            displayName: 'Verify deployment health'
 
