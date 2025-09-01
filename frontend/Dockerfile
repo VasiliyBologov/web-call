@@ -1,12 +1,12 @@
 # Frontend Dockerfile (Vite build + preview)
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json ./
-COPY tsconfig.json ./
-COPY vite.config.ts ./
-COPY index.html ./
-COPY src ./src
-COPY public ./public
+COPY frontend/package.json ./
+COPY frontend/tsconfig.json ./
+COPY frontend/vite.config.ts ./
+COPY frontend/index.html ./
+COPY frontend/src ./src
+COPY frontend/public ./public
 RUN npm ci || npm i
 # Build with defaults; override via build args if needed
 ARG VITE_API_BASE
@@ -28,12 +28,12 @@ FROM nginx:alpine AS runner
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Nginx config for SPA + API/WS proxy to backend service (rendered from template at runtime)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 ## Create a custom nginx.conf that includes our config and exposes env vars (kept minimal)
 #RUN printf 'env BACKEND_SERVICE;\n' > /etc/nginx/nginx.conf && \
 #    printf 'events { worker_connections 1024; }\n' >> /etc/nginx/nginx.conf && \
 #    printf 'http { include /etc/nginx/conf.d/*.conf; }\n' >> /etc/nginx/nginx.conf
 
-EXPOSE 80 8080
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
