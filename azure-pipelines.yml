@@ -109,7 +109,7 @@ stages:
               mkdir -p "$(Build.ArtifactStagingDirectory)"
               echo "Generating docker-compose at $COMPOSE_OUT"
               cat > "$COMPOSE_OUT" << 'EOF'
-              version: '3.3'
+              version: '3.8'
               services:
                 app:
                   image: ${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}

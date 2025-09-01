@@ -1,9 +1,7 @@
 services:
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: webcall-backend
+      context: ./backend
     ports:
       - "8000:8000"
     environment:
@@ -17,58 +15,23 @@ services:
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-}
     volumes:
       - ./backend:/app
-      - backend_logs:/app/logs
     networks:
       - webcall-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
       args:
         VITE_API_BASE: ${VITE_API_BASE:-}
         VITE_WS_BASE: ${VITE_WS_BASE:-}
         VITE_ICE_JSON: ${VITE_ICE_JSON:-[]}
         VITE_ICE_TRANSPORT_POLICY: ${VITE_ICE_TRANSPORT_POLICY:-all}
-    container_name: webcall-frontend
     ports:
       - "5173:80"
-      - "8080:8080"  # Nginx status port
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - webcall-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 128M
-          cpus: '0.1'
 
   turn:
     image: coturn/coturn:4.6.2
@@ -95,30 +58,7 @@ services:
       --verbose
     networks:
       - webcall-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "3478"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.25'
-        reservations:
-          memory: 128M
-          cpus: '0.1'
-
-volumes:
-  backend_logs:
 
 networks:
   webcall-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-    driver_opts:
-      com.docker.network.bridge.name: webcall-br0
