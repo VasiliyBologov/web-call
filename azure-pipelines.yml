@@ -109,16 +109,24 @@ stages:
               mkdir -p "$(Build.ArtifactStagingDirectory)"
               echo "Generating docker-compose at $COMPOSE_OUT"
               cat > "$COMPOSE_OUT" << 'EOF'
-              version: '3.8'
+              version: '3.3'
               services:
                 app:
                   image: ${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
+                  environment:
+                    BACKEND_SERVICE: http://backend:8000
                   depends_on:
                     - backend
                   ports:
                     - '80:80'
                   expose:
                     - '80'
+                  healthcheck:
+                    test: ["CMD", "curl", "-f", "http://localhost/health"]
+                    interval: 30s
+                    timeout: 10s
+                    retries: 3
+                    start_period: 40s
                 backend:
                   image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
                   environment:
