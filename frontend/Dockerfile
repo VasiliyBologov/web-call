@@ -26,10 +26,10 @@ RUN apk add --no-cache curl netcat-openbsd
 # Copy built static files to nginx html directory
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Nginx config for SPA + API/WS proxy to backend service
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Nginx config for SPA + API/WS proxy to backend service (rendered from template at runtime)
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 
-# Create a custom nginx.conf that includes our config and exposes env vars
+# Create a custom nginx.conf that includes our config and exposes env vars (kept minimal)
 RUN printf 'env BACKEND_SERVICE;\n' > /etc/nginx/nginx.conf && \
     printf 'events { worker_connections 1024; }\n' >> /etc/nginx/nginx.conf && \
     printf 'http { include /etc/nginx/conf.d/*.conf; }\n' >> /etc/nginx/nginx.conf
