@@ -20,11 +20,18 @@ ENV VITE_ICE_TRANSPORT_POLICY=${VITE_ICE_TRANSPORT_POLICY}
 RUN npm run build
 
 FROM nginx:alpine AS runner
-# Install curl for healthcheck
-RUN apk add --no-cache curl
+# Install curl and netcat for healthcheck
+RUN apk add --no-cache curl netcat-openbsd
+
 # Copy built static files to nginx html directory
 COPY --from=build /app/dist /usr/share/nginx/html
+
 # Nginx config for SPA + API/WS proxy to backend service
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+
+# Create a custom nginx.conf that includes our config
+RUN echo 'events { worker_connections 1024; }' > /etc/nginx/nginx.conf && \
+    echo 'http { include /etc/nginx/conf.d/*.conf; }' >> /etc/nginx/nginx.conf
+
+EXPOSE 80 8080
 CMD ["nginx", "-g", "daemon off;"]
