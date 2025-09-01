@@ -15,10 +15,6 @@ services:
       - PREVIEW_MAX_BYTES=${PREVIEW_MAX_BYTES:-300000}
       - PREVIEW_TTL_SECONDS=${PREVIEW_TTL_SECONDS:-120}
       - TRUSTED_HOSTS=${TRUSTED_HOSTS:-}
-    volumes:
-      - ./backend:/app
-    networks:
-      - webcall-network
 
   frontend:
     build:
@@ -33,8 +29,6 @@ services:
       - "5173:80"
     depends_on:
       - backend
-    networks:
-      - webcall-network
 
   turn:
     image: coturn/coturn:4.6.2
@@ -59,9 +53,3 @@ services:
       --no-cli
       --log-file=stdout
       --verbose
-    networks:
-      - webcall-network
-
-networks:
-  webcall-network:
-    driver: bridge
