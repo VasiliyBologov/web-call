@@ -20,6 +20,7 @@ ENV VITE_ICE_TRANSPORT_POLICY=${VITE_ICE_TRANSPORT_POLICY}
 RUN npm run build
 
 FROM nginx:alpine AS runner
+ENV BACKEND_SERVICE=http://backend:8000
 # Install curl and netcat for healthcheck
 RUN apk add --no-cache curl netcat-openbsd
 

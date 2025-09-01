@@ -50,9 +50,9 @@ server {
 
     # API proxy
     location /api/ {
-        # BACKEND_SERVICE is substituted at startup; default to http://backend:8000
+        # BACKEND_SERVICE is substituted at startup (default provided via Dockerfile ENV)
         # Note: no trailing slash to preserve original URI after /api/
-        proxy_pass ${BACKEND_SERVICE:-http://backend:8000};
+        proxy_pass ${BACKEND_SERVICE};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -70,8 +70,8 @@ server {
 
     # WebSocket proxy
     location /ws/ {
-        # BACKEND_SERVICE is substituted at startup; default to http://backend:8000
-        proxy_pass ${BACKEND_SERVICE:-http://backend:8000};
+        # BACKEND_SERVICE is substituted at startup (default provided via Dockerfile ENV)
+        proxy_pass ${BACKEND_SERVICE};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
