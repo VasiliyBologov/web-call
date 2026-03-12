@@ -82,6 +82,12 @@ stages:
               cat > "$COMPOSE_OUT" << 'EOF'
               version: '3.8'
               services:
+                backend:
+                  image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
+                  environment:
+                    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+                  expose:
+                    - '8000'
                 app:
                   image: ${ACR_LOGIN_SERVER}/${FRONTEND_IMAGE}:${IMAGE_TAG}
                   depends_on:
@@ -90,12 +96,6 @@ stages:
                     - '80:80'
                   expose:
                     - '80'
-                backend:
-                  image: ${ACR_LOGIN_SERVER}/${BACKEND_IMAGE}:${IMAGE_TAG}
-                  environment:
-                    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-                  expose:
-                    - '8000'
               EOF
               # Substitute variables for compose
               sed -i "s#\${ACR_LOGIN_SERVER}#$(acrLoginServer)#g" "$COMPOSE_OUT"

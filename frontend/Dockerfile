@@ -29,7 +29,7 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Create a minimal /etc/nginx/nginx.conf that sets DNS resolvers and includes our config
 RUN printf 'events { worker_connections 1024; }\n' > /etc/nginx/nginx.conf && \
-    printf 'http {\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    resolver 127.0.0.11 168.63.129.16 valid=5s ipv6=off;\n    resolver_timeout 5s;\n    include /etc/nginx/conf.d/*.conf;\n}\n' >> /etc/nginx/nginx.conf
+    printf 'http {\n    include /etc/nginx/mime.types;\n    default_type application/octet-stream;\n    resolver 127.0.0.11 168.63.129.16 8.8.8.8 valid=5s ipv6=off;\n    resolver_timeout 5s;\n    include /etc/nginx/conf.d/*.conf;\n}\n' >> /etc/nginx/nginx.conf
 
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
