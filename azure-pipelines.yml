@@ -17,7 +17,7 @@ variables:
   webAppName: 'web-calls'
   resourceGroup: 'GiterApps'
   # Container registry service connection established during pipeline creation
-  dockerRegistryServiceConnection: '4a6af8e9-2ad7-403c-95c8-19e402b29025'
+  dockerRegistryServiceConnection: 'eecef7a1-dbfa-4c23-be4f-e2b972aeee5a'
   imageRepository: 'webcall'
   containerRegistry: 'giterappregistry.azurecr.io'
   dockerfilePath: '$(Build.SourcesDirectory)/backend/Dockerfile'
