@@ -50,6 +50,8 @@ services:
       --min-port=50000
       --max-port=50100
       --fingerprint
+      --lt-cred-mech
+      --stale-nonce
       --no-cli
       --log-file=stdout
       --verbose

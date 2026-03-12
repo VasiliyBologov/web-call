@@ -31,14 +31,22 @@ const WS_BASE = ENV_WS_BASE
 
 // Enhanced ICE configuration with better TURN support
 // Use our own TURN server as the default instead of Google STUN servers
-const DEFAULT_ICE_JSON = JSON.stringify([
-  { urls: [
-    'stun:localhost:3478'
-  ] },
-  { urls: [
-    'turn:localhost:3478?transport=udp'
-  ], username: 'user', credential: 'secret' }
-])
+const DEFAULT_ICE_JSON = (() => {
+  const host = apiHost
+  return JSON.stringify([
+    {
+      urls: [`stun:${host}:3478`]
+    },
+    {
+      urls: [
+        `turn:${host}:3478?transport=udp`,
+        `turn:${host}:3478?transport=tcp`
+      ],
+      username: 'user',
+      credential: 'secret'
+    }
+  ])
+})()
 
 const RAW_ICE = import.meta.env.VITE_ICE_JSON as string | undefined
 export const ICE_JSON = (!RAW_ICE || RAW_ICE.trim() === '' || RAW_ICE.trim() === '[]' || RAW_ICE.trim().toLowerCase() === 'null')
