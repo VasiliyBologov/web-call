@@ -6,11 +6,11 @@
 set -e
 
 echo "🔍 Checking current service status..."
-docker-compose ps
+make ps
 
 echo ""
 echo "🛑 Stopping all services..."
-docker-compose down
+make stop
 
 echo ""
 echo "🧹 Cleaning up any orphaned containers..."
@@ -22,7 +22,7 @@ docker network ls | grep webcall || echo "No webcall network found"
 
 echo ""
 echo "🚀 Starting services..."
-docker-compose up -d
+make up
 
 echo ""
 echo "⏳ Waiting for services to be ready..."
@@ -30,20 +30,16 @@ sleep 10
 
 echo ""
 echo "🔍 Checking service health..."
-docker-compose ps
+make ps
 
 echo ""
 echo "🏥 Running health checks..."
-echo "Backend health:"
-curl -f http://localhost:8000/api/health || echo "Backend not ready yet"
-
-echo ""
-echo "Frontend health:"
-curl -f http://localhost:5173/health || echo "Frontend not ready yet"
+echo "Service health (Nginx):"
+curl -f http://localhost/api/health || echo "Service not ready yet"
 
 echo ""
 echo "📊 Service logs (last 20 lines):"
-docker-compose logs --tail=20
+docker logs --tail=20 web-call-app
 
 echo ""
 echo "✅ Restart complete! Check the logs above for any errors."

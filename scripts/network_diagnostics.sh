@@ -238,7 +238,7 @@ check_webrtc_issues() {
     fi
     
     # Проверяем STUN серверы
-    local stun_servers=("stun:localhost:3478")
+    local stun_servers=("stun:20.80.101.0:3478")
     for stun_server in "${stun_servers[@]}"; do
         stun_host=$(echo "$stun_server" | sed 's/stun:\/\///' | cut -d: -f1)
         stun_port=$(echo "$stun_server" | sed 's/stun:\/\///' | cut -d: -f2)

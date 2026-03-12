@@ -14,10 +14,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Default values
-TURN_HOST=${TURN_HOST:-localhost}
+TURN_HOST=${TURN_HOST:-20.80.101.0}
 TURN_PORT=${TURN_PORT:-3478}
-TURN_USERNAME=${TURN_USERNAME:-user}
-TURN_PASSWORD=${TURN_PASSWORD:-secret}
+TURN_USERNAME=${TURN_USERNAME:-testuser}
+TURN_PASSWORD=${TURN_PASSWORD:-testpassword}
 
 echo "Testing TURN server at ${TURN_HOST}:${TURN_PORT}"
 echo "Username: ${TURN_USERNAME}"
@@ -108,5 +108,5 @@ echo 'VITE_ICE_JSON=[{"urls":["stun:'${TURN_HOST}':'${TURN_PORT}'"]},{"urls":["t
 echo ""
 echo "To test with the web application:"
 echo "1. Copy the ICE configuration above to your .env file"
-echo "2. Restart the application: docker compose up --build"
+echo "2. Restart the application: make start"
 echo "3. Try connecting from different networks/devices"
