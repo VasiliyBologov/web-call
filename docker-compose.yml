@@ -31,7 +31,9 @@ services:
       - backend
 
   turn:
-    image: coturn/coturn:4.6.2
+    build:
+      context: .
+      dockerfile: turn.Dockerfile
     container_name: webcall-turn
     ports:
       - "3478:3478"
@@ -41,17 +43,3 @@ services:
       - TURN_USERNAME=${TURN_USERNAME:-user}
       - TURN_PASSWORD=${TURN_PASSWORD:-secret}
       - TURN_REALM=${TURN_REALM:-localhost}
-    command: >
-      turnserver
-      --listening-port=3478
-      --listening-ip=0.0.0.0
-      --user=${TURN_USERNAME:-user}:${TURN_PASSWORD:-secret}
-      --realm=${TURN_REALM:-localhost}
-      --min-port=50000
-      --max-port=50100
-      --fingerprint
-      --lt-cred-mech
-      --stale-nonce
-      --no-cli
-      --log-file=stdout
-      --verbose
