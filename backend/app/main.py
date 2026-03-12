@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.websockets import WebSocketState
 import uvicorn
 
 from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
@@ -28,11 +29,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger("webcall")
 
+store = RoomStore()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Управление жизненным циклом приложения с детальным логированием"""
+    try:
+        # Startup logic
+        logger.info("Lifespan: Starting Web Call Signaling Server")
+        store.start_cleanup()
+        logger.info("Lifespan: Room cleanup service started")
+        
+        yield
+        
+    except asyncio.CancelledError:
+        logger.warning("Lifespan: Task was cancelled during runtime")
+        raise
+    except Exception as e:
+        logger.error(f"Lifespan: Critical error occurred: {e}", exc_info=True)
+        raise
+    finally:
+        # Shutdown logic
+        logger.info("Lifespan: Shutting down Web Call Signaling Server")
+        
+        # Останавливаем сервис очистки
+        try:
+            store.stop_cleanup()
+            logger.info("Lifespan: Room cleanup service stopped")
+        except Exception as e:
+            logger.error(f"Lifespan: Error stopping cleanup: {e}")
+        
+        # Закрываем все активные WebSocket соединения
+        closed_count = 0
+        for token, peers in list(connections.items()):
+            for peer_id, ws in list(peers.items()):
+                try:
+                    # Проверяем состояние соединения
+                    if ws.client_state != WebSocketState.DISCONNECTED:
+                        await ws.close(code=1001, reason="Server shutdown")
+                        closed_count += 1
+                except Exception as e:
+                    logger.warning(f"Lifespan: Error closing WebSocket for {token}/{peer_id}: {e}")
+        
+        if closed_count > 0:
+            logger.info(f"Lifespan: Closed {closed_count} active WebSocket connections")
+        
+        logger.info("Lifespan: Shutdown complete")
+
 # Конфигурация приложения
 app = FastAPI(
     title="Web Call Signaling", 
     version="1.0",
-    description="Reliable WebRTC signaling server with enhanced error handling and monitoring"
+    description="Reliable WebRTC signaling server with enhanced error handling and monitoring",
+    lifespan=lifespan
 )
 
 # Middleware для безопасности и CORS
@@ -43,27 +92,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-store = RoomStore()
-
-@app.on_event("startup")
-async def on_startup():
-    """Инициализация приложения при запуске"""
-    logger.info("Starting Web Call Signaling Server")
-    store.start_cleanup()
-    logger.info("Room cleanup service started")
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    """Очистка при закрытии приложения"""
-    logger.info("Shutting down Web Call Signaling Server")
-    # Закрываем все активные WebSocket соединения
-    for token, peers in list(connections.items()):
-        for peer_id, ws in list(peers.items()):
-            try:
-                await ws.close(code=1001, reason="Server shutdown")
-            except Exception as e:
-                logger.warning(f"Error closing WebSocket for {token}/{peer_id}: {e}")
 
 # Упрощенный health check
 @app.get("/api/health")
@@ -381,6 +409,10 @@ async def ws_room(ws: WebSocket, token: str):
                     
                     # Обрабатываем сообщение
                     success = await handle_websocket_message(ws, token, peer_id, data)
+                    
+                    # Фиксируем peer_id при успешном join
+                    if success and data.get("type") == "join" and not peer_id:
+                        peer_id = data.get("peerId")
                     
                     if not success:
                         retry_count += 1

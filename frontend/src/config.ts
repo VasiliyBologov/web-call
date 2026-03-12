@@ -137,9 +137,19 @@ export const ICE_SERVERS: RTCIceServer[] = (() => {
 })()
 
 export function api(path: string) {
-  return `${API_BASE}${path}`
+  const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (base.endsWith('/api') && p.startsWith('/api/')) {
+    return `${base}${p.slice(4)}`;
+  }
+  return `${base}${p}`;
 }
 
 export function wsUrl(path: string) {
-  return `${WS_BASE}${path}`
+  const base = WS_BASE.endsWith('/') ? WS_BASE.slice(0, -1) : WS_BASE;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (base.endsWith('/ws') && p.startsWith('/ws/')) {
+    return `${base}${p.slice(3)}`;
+  }
+  return `${base}${p}`;
 }

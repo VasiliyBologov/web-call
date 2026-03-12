@@ -9,10 +9,10 @@ COPY frontend/src ./src
 COPY frontend/public ./public
 RUN npm ci || npm i
 # Build with defaults; override via build args if needed
-ARG VITE_API_BASE
-ARG VITE_WS_BASE
-ARG VITE_ICE_JSON
-ARG VITE_ICE_TRANSPORT_POLICY
+ARG VITE_API_BASE=""
+ARG VITE_WS_BASE=""
+ARG VITE_ICE_JSON="[]"
+ARG VITE_ICE_TRANSPORT_POLICY="all"
 ENV VITE_API_BASE=${VITE_API_BASE}
 ENV VITE_WS_BASE=${VITE_WS_BASE}
 ENV VITE_ICE_JSON=${VITE_ICE_JSON}
