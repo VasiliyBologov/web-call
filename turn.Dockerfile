@@ -8,17 +8,23 @@ ENV TURN_USERNAME=user
 ENV TURN_PASSWORD=secret
 ENV TURN_REALM=localhost
 ENV MIN_PORT=50000
-ENV MAX_PORT=50100
+ENV MAX_PORT=50010
+ENV EXTERNAL_IP=""
 
-EXPOSE 3478/tcp 3478/udp 50000-50100/udp
+EXPOSE 3478/tcp 3478/udp 50000-50010/udp
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD nc -z localhost 3478 || exit 1
 
 # Start turnserver with environment variables and necessary flags
-CMD turnserver \
+# We use sh -c to allow environment variable expansion and conditional flags
+# Automatically detect external IP if not provided
+ENTRYPOINT ["sh", "-c", "PUBLIC_IP=${EXTERNAL_IP:-$(curl -s -m 5 https://ifconfig.me || curl -s -m 5 https://api.ipify.org || echo '')}; \
+    echo \"Starting turnserver with external-ip=${PUBLIC_IP}\"; \
+    exec turnserver \
     --listening-port=3478 \
     --listening-ip=0.0.0.0 \
+    ${PUBLIC_IP:+--external-ip=$PUBLIC_IP} \
     --user=${TURN_USERNAME}:${TURN_PASSWORD} \
     --realm=${TURN_REALM} \
     --min-port=${MIN_PORT} \
@@ -27,5 +33,8 @@ CMD turnserver \
     --lt-cred-mech \
     --stale-nonce \
     --no-cli \
+    --no-stdout-log \
     --log-file=stdout \
-    --verbose
+    --mobility \
+    --no-multicast-peers \
+    --verbose"]
