@@ -147,12 +147,17 @@ async def debug_info():
         raise HTTPException(status_code=500, detail=f"Debug info unavailable: {str(e)}")
 
 @app.post("/api/rooms", response_model=CreateRoomResponse)
-async def create_room():
+async def create_room(request: Request):
     """Создание новой комнаты с улучшенной обработкой ошибок"""
     try:
         room = await store.create_room(max_participants=MAX_PARTICIPANTS_DEFAULT)
-        # Используем захардкоженный базовый URL, как просил пользователь
-        base_url = "http://20.80.101.0"
+        # Используем PUBLIC_BASE_URL или базовый URL из запроса
+        base_url = "https://talklink.space"
+        if not base_url:
+            # Если переменная окружения не задана, берем базовый URL из запроса
+            base_url = str(request.base_url).rstrip("/")
+        else:
+            base_url = base_url.rstrip("/")
         
         url_path = f"/r/{room.token}"
         url = f"{base_url}{url_path}"
