@@ -45,16 +45,11 @@ const DEFAULT_ICE_JSON = JSON.stringify([
   }
 ])
 
-const RAW_ICE = import.meta.env.VITE_ICE_JSON as string | undefined
-export const ICE_JSON = (!RAW_ICE || RAW_ICE.trim() === '' || RAW_ICE.trim() === '[]' || RAW_ICE.trim().toLowerCase() === 'null')
-  ? DEFAULT_ICE_JSON
-  : RAW_ICE
+// Принудительно используем захардкоженные настройки ICE (STUN/TURN), как просил пользователь
+export const ICE_JSON = DEFAULT_ICE_JSON
 
-// ICE transport policy: "all" (default) or "relay" (TURN-only)
-const RAW_POLICY = (import.meta.env.VITE_ICE_TRANSPORT_POLICY as string | undefined)?.trim().toLowerCase()
-export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = (RAW_POLICY === 'relay' || RAW_POLICY === 'all')
-  ? (RAW_POLICY as RTCIceTransportPolicy)
-  : 'all'
+// Принудительно используем 'all' для политики транспорта ICE
+export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = 'all'
 
 function isFirefox(): boolean {
   if (!isBrowser) return false

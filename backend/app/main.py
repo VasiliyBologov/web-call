@@ -151,20 +151,11 @@ async def create_room():
     """Создание новой комнаты с улучшенной обработкой ошибок"""
     try:
         room = await store.create_room(max_participants=MAX_PARTICIPANTS_DEFAULT)
-        base_url = os.getenv("PUBLIC_BASE_URL")
-        
-        # Улучшенная валидация PUBLIC_BASE_URL
-        if base_url:
-            base_url = base_url.strip()
-            has_placeholder = "${" in base_url or ":-" in base_url
-            if has_placeholder or not base_url.lower().startswith(("http://", "https://")):
-                logger.warning(f"Invalid PUBLIC_BASE_URL: {base_url}")
-                base_url = None
-            else:
-                base_url = base_url.rstrip("/")
+        # Используем захардкоженный базовый URL, как просил пользователь
+        base_url = "http://20.80.101.0"
         
         url_path = f"/r/{room.token}"
-        url = f"{base_url}{url_path}" if base_url else url_path
+        url = f"{base_url}{url_path}"
         
         logger.info(f"Room created: {room.token}, max_participants: {room.max_participants}")
         
