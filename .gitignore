@@ -208,3 +208,4 @@ __marimo__/
 
 .idea/
 .junie/
+/frontend/node_modules/

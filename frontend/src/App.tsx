@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react'
-import { Home } from './pages/Home'
+import { Landing } from './pages/Landing'
+import { Call } from './pages/Call'
 import { Room } from './pages/Room'
 import { Admin } from './pages/Admin'
 
@@ -7,8 +8,15 @@ function useRoute() {
   const path = window.location.pathname
   const roomMatch = path.match(/^\/r\/([^/]+)$/)
   const isAdmin = path === '/admin'
+  const isCall = path === '/call'
+  
+  let route: 'room' | 'admin' | 'call' | 'landing' = 'landing'
+  if (roomMatch) route = 'room'
+  else if (isAdmin) route = 'admin'
+  else if (isCall) route = 'call'
+
   return {
-    route: roomMatch ? 'room' : (isAdmin ? 'admin' : 'home'),
+    route,
     token: roomMatch ? decodeURIComponent(roomMatch[1]) : undefined,
   } as const
 }
@@ -21,5 +29,8 @@ export const App: React.FC = () => {
   if (route === 'admin') {
     return <Admin />
   }
-  return <Home />
+  if (route === 'call') {
+    return <Call />
+  }
+  return <Landing />
 }

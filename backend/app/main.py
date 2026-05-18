@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse, Response
 from starlette.websockets import WebSocketState
 import uvicorn
 
-from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
-from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
+from app.models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
+from app.rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
 
 # Настройка логирования с детальной информацией
 logging.basicConfig(
