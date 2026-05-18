@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY, api } from '../config'
-import { IconButton, Tooltip, Menu, MenuItem } from '@mui/material'
+import { IconButton, Tooltip, Menu, MenuItem, FormControlLabel, Switch, Divider } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CallEndIcon from '@mui/icons-material/CallEnd'
 import MicIcon from '@mui/icons-material/Mic'
@@ -187,6 +187,15 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([])
   const [sinkId, setSinkId] = useState<string | null>(() => localStorage.getItem('audioSinkId'))
+  const [autoMuteOnBlur, setAutoMuteOnBlur] = useState<boolean>(() => localStorage.getItem('autoMuteOnBlur') === 'true')
+  const autoMuteOnBlurRef = useRef(autoMuteOnBlur)
+  
+  useEffect(() => {
+    autoMuteOnBlurRef.current = autoMuteOnBlur
+    localStorage.setItem('autoMuteOnBlur', String(autoMuteOnBlur))
+    applyActiveState()
+  }, [autoMuteOnBlur])
+
   const [outputSupported, setOutputSupported] = useState<boolean>(() => typeof (HTMLMediaElement.prototype as any).setSinkId === 'function')
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(null)
   const openSettings = (e: React.MouseEvent<HTMLElement>) => setSettingsAnchor(e.currentTarget)
@@ -235,20 +244,32 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const desiredCamOnRef = useRef(true)
   const pageActiveRef = useRef(true)
 
-  function isPageActive(): boolean {
+  const isPageActive = useCallback((): boolean => {
     return document.visibilityState === 'visible' && document.hasFocus()
-  }
+  }, [])
 
-  function applyActiveState() {
-    const active = isPageActive()
-    pageActiveRef.current = active
+  const applyActiveState = useCallback(() => {
     const stream = localStreamRef.current
     if (!stream) return
+
+    const active = isPageActive()
+    // Если настройка ВКЛЮЧЕНА (true), то медиа выключается при потере фокуса (!active).
+    // Если настройка ВЫКЛЮЧЕНА (false, по умолчанию), то медиа остается включенным (true).
+    const effectiveActive = autoMuteOnBlurRef.current ? active : true
+
     try {
-      stream.getAudioTracks().forEach(t => (t.enabled = active && desiredMicOnRef.current))
-      stream.getVideoTracks().forEach(t => (t.enabled = active && desiredCamOnRef.current))
-    } catch {}
-  }
+      stream.getAudioTracks().forEach(t => {
+        const target = effectiveActive && desiredMicOnRef.current
+        if (t.enabled !== target) t.enabled = target
+      })
+      stream.getVideoTracks().forEach(t => {
+        const target = effectiveActive && desiredCamOnRef.current
+        if (t.enabled !== target) t.enabled = target
+      })
+    } catch (e) {
+      console.warn('applyActiveState error:', e)
+    }
+  }, [isPageActive])
 
   // --- Admin preview helpers ---
   function ensurePreviewTimer() {
@@ -312,6 +333,12 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
     async function start() {
       setStatus('запрос устройств…')
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (window.isSecureContext === false) {
+          throw new Error('Доступ к медиа-устройствам отклонен браузером из-за небезопасного соединения (HTTP). Для работы WebRTC требуется HTTPS или localhost.')
+        }
+        throw new Error('Ваш браузер не поддерживает доступ к медиа-устройствам (navigator.mediaDevices не найден)')
+      }
       const videoConstraints: MediaTrackConstraints = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
       let stream: MediaStream
       try {
@@ -660,6 +687,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     let mounted = true
     async function ensureLabels() {
+      if (!navigator.mediaDevices?.getUserMedia) return
       try {
         // Request mic briefly so labels are available in some browsers
         const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -667,6 +695,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       } catch {}
     }
     async function refreshOutputs() {
+      if (!navigator.mediaDevices?.enumerateDevices) return
       try {
         const list = await navigator.mediaDevices.enumerateDevices()
         const outs = list.filter(d => d.kind === 'audiooutput')
@@ -694,6 +723,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   useEffect(() => {
     let mounted = true
     async function refreshVideoInputs() {
+      if (!navigator.mediaDevices?.enumerateDevices) return
       try {
         const list = await navigator.mediaDevices.enumerateDevices()
         const vids = list.filter(d => d.kind === 'videoinput')
@@ -1215,7 +1245,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       window.removeEventListener('pageshow', onPageShow)
       window.removeEventListener('pagehide', onPageHide)
     }
-  }, [])
+  }, [applyActiveState])
 
   function toggleMic() {
     if (!hasMic) return
@@ -1235,7 +1265,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   async function switchCamera() {
     try {
-      if (!canSwitchCam) return
+      if (!canSwitchCam || !navigator.mediaDevices?.getUserMedia) return
       const stream = localStreamRef.current
       const pc = pcRef.current
       if (!stream) return
@@ -1264,8 +1294,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
       const newTrack = nStream.getVideoTracks()[0]
       if (!newTrack) return
-      // Preserve camera enabled state
-      newTrack.enabled = isPageActive() && desiredCamOnRef.current
+      // Preserve camera enabled state (respecting autoMuteOnBlur setting)
+      const effectiveActiveForSwitch = autoMuteOnBlurRef.current ? isPageActive() : true
+      newTrack.enabled = effectiveActiveForSwitch && desiredCamOnRef.current
 
       // Replace track in RTCPeerConnection
       const sender = pc?.getSenders().find(s => s.track && s.track.kind === 'video')
@@ -1364,31 +1395,50 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           </div>
         )}
         <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2 }} />
-        {outputSupported && outputs.length > 0 && (
-          <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3 }}>
-            <Tooltip title="Настройки звука">
-              <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
-                <SettingsIcon />
-              </IconButton>
-            </Tooltip>
-            <Menu
-              anchorEl={settingsAnchor}
-              open={Boolean(settingsAnchor)}
-              onClose={closeSettings}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
-            >
+        <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3 }}>
+          <Tooltip title="Настройки">
+            <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+              <SettingsIcon />
+            </IconButton>
+          </Tooltip>
+          <Menu
+            anchorEl={settingsAnchor}
+            open={Boolean(settingsAnchor)}
+            onClose={closeSettings}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+            PaperProps={{ sx: { minWidth: 200 } }}
+          >
+            <MenuItem sx={{ py: 1, '&:hover': { bgcolor: 'transparent' } }} onClick={(e) => e.stopPropagation()}>
+              <FormControlLabel
+                control={
+                  <Switch 
+                    size="small"
+                    checked={autoMuteOnBlur} 
+                    onChange={(e) => setAutoMuteOnBlur(e.target.checked)} 
+                  />
+                }
+                label={<span style={{ fontSize: 14 }}>Отключать медиа при смене фокуса</span>}
+                sx={{ m: 0, width: '100%' }}
+              />
+            </MenuItem>
+
+            {outputSupported && outputs.length > 0 && <Divider />}
+            {outputSupported && outputs.length > 0 && (
+              <div style={{ padding: '8px 16px 4px', fontSize: 11, opacity: 0.6, fontWeight: 700, letterSpacing: 0.5 }}>ВЫВОД ЗВУКА</div>
+            )}
+            {outputSupported && outputs.length > 0 && (
               <MenuItem selected={!sinkId} onClick={() => { applySink(null); closeSettings(); }}>
-                Системный по умолчанию
+                <span style={{ fontSize: 14 }}>Системный по умолчанию</span>
               </MenuItem>
-              {outputs.map(d => (
-                <MenuItem key={d.deviceId} selected={sinkId === d.deviceId} onClick={() => { applySink(d.deviceId); closeSettings(); }}>
-                  {d.label || 'Устройство вывода'}
-                </MenuItem>
-              ))}
-            </Menu>
-          </div>
-        )}
+            )}
+            {outputSupported && outputs.length > 0 && outputs.map(d => (
+              <MenuItem key={d.deviceId} selected={sinkId === d.deviceId} onClick={() => { applySink(d.deviceId); closeSettings(); }}>
+                <span style={{ fontSize: 14 }}>{d.label || 'Устройство вывода'}</span>
+              </MenuItem>
+            ))}
+          </Menu>
+        </div>
         <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
           {status}
           {wsConnectionStateRef.current === 'failed' && (
