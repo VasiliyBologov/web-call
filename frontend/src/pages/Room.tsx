@@ -929,13 +929,22 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   function wirePcHandlers(pc: RTCPeerConnection) {
     pc.ontrack = async ev => {
-      const [remoteStream] = ev.streams
-      if (remoteStream) {
-        remoteStreamRef.current = remoteStream
+      console.log('[WebRTC] Remote track received:', ev.track.kind, 'Streams:', ev.streams.length)
+      
+      let remoteStream = ev.streams[0]
+      if (!remoteStream) {
+        console.warn('[WebRTC] No stream found in ontrack event, creating one from track')
+        remoteStream = new MediaStream([ev.track])
       }
+      
+      remoteStreamRef.current = remoteStream
       const el = remoteVideoRef.current as HTMLVideoElement | null
-      if (el && remoteStream) {
-        el.srcObject = remoteStream
+      
+      if (el) {
+        if (el.srcObject !== remoteStream) {
+          el.srcObject = remoteStream
+          console.log('[WebRTC] Set remote video srcObject')
+        }
         ;(el as any).muted = false
         try {
           const anyEl: any = el
@@ -947,7 +956,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
         tryPlayRemote('ontrack')
         if (ev.track) {
-          ev.track.onunmute = () => tryPlayRemote('track-unmute')
+          ev.track.onunmute = () => {
+            console.log('[WebRTC] Track unmuted:', ev.track.kind)
+            tryPlayRemote('track-unmute')
+          }
         }
       }
     }
@@ -1009,6 +1021,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
     pc.onicecandidate = ev => {
       if (ev.candidate) {
+        const c = ev.candidate
+        const type = c.candidate.split(' ')[7] || 'unknown'
+        console.log(`[ICE] Local candidate: type=${type}, protocol=${c.protocol}, address=${c.address}:${c.port}`)
         send({ type: 'candidate', peerId: peerIdRef.current, candidate: ev.candidate })
       }
     }

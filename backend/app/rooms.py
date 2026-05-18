@@ -57,6 +57,11 @@ class RoomStore:
         if self._cleanup_task is None:
             self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
+    def stop_cleanup(self) -> None:
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            self._cleanup_task = None
+
     async def _cleanup_loop(self):
         while True:
             try:

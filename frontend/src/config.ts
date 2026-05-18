@@ -30,26 +30,26 @@ const WS_BASE = ENV_WS_BASE
   : (isDev ? `${wsProto}://${apiHost}:8000` : `${wsProto}://${isBrowser ? window.location.host : rawHost}`)
 
 // Enhanced ICE configuration with better TURN support
-// Use our own TURN server as the default instead of Google STUN servers
+// Use hardcoded TURN server as the default
 const DEFAULT_ICE_JSON = JSON.stringify([
-  { urls: [
-    'stun:localhost:3478'
-  ] },
-  { urls: [
-    'turn:localhost:3478?transport=udp'
-  ], username: 'user', credential: 'secret' }
+  {
+    urls: ['stun:20.80.101.0:3478']
+  },
+  {
+    urls: [
+      'turn:20.80.101.0:3478?transport=udp',
+      'turn:20.80.101.0:3478?transport=tcp'
+    ],
+    username: 'testuser',
+    credential: 'testpassword'
+  }
 ])
 
-const RAW_ICE = import.meta.env.VITE_ICE_JSON as string | undefined
-export const ICE_JSON = (!RAW_ICE || RAW_ICE.trim() === '' || RAW_ICE.trim() === '[]' || RAW_ICE.trim().toLowerCase() === 'null')
-  ? DEFAULT_ICE_JSON
-  : RAW_ICE
+// Принудительно используем захардкоженные настройки ICE (STUN/TURN), как просил пользователь
+export const ICE_JSON = DEFAULT_ICE_JSON
 
-// ICE transport policy: "all" (default) or "relay" (TURN-only)
-const RAW_POLICY = (import.meta.env.VITE_ICE_TRANSPORT_POLICY as string | undefined)?.trim().toLowerCase()
-export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = (RAW_POLICY === 'relay' || RAW_POLICY === 'all')
-  ? (RAW_POLICY as RTCIceTransportPolicy)
-  : 'all'
+// Принудительно используем 'all' для политики транспорта ICE
+export const ICE_TRANSPORT_POLICY: RTCIceTransportPolicy = 'all'
 
 function isFirefox(): boolean {
   if (!isBrowser) return false
@@ -129,9 +129,19 @@ export const ICE_SERVERS: RTCIceServer[] = (() => {
 })()
 
 export function api(path: string) {
-  return `${API_BASE}${path}`
+  const base = API_BASE.endsWith('/') ? API_BASE.slice(0, -1) : API_BASE;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (base.endsWith('/api') && p.startsWith('/api/')) {
+    return `${base}${p.slice(4)}`;
+  }
+  return `${base}${p}`;
 }
 
 export function wsUrl(path: string) {
-  return `${WS_BASE}${path}`
+  const base = WS_BASE.endsWith('/') ? WS_BASE.slice(0, -1) : WS_BASE;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  if (base.endsWith('/ws') && p.startsWith('/ws/')) {
+    return `${base}${p.slice(3)}`;
+  }
+  return `${base}${p}`;
 }

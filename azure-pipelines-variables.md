@@ -4,15 +4,10 @@
 
 ## Обязательные переменные
 
-### TURN Server Configuration
-- `TURN_USERNAME` - имя пользователя для TURN сервера (например: "user")
-- `TURN_PASSWORD` - пароль для TURN сервера (например: "secret123")
-- `TURN_REALM` - realm для TURN сервера (например: "yourdomain.com")
-
 ### Frontend Configuration
 - `VITE_API_BASE` - базовый URL для API (например: "https://yourdomain.com/api")
 - `VITE_WS_BASE` - базовый URL для WebSocket (например: "wss://yourdomain.com/ws")
-- `VITE_ICE_JSON` - JSON конфигурация ICE серверов (например: '[{"urls":"turn:yourdomain.com:3478","username":"user","credential":"secret123"}]')
+- `VITE_ICE_JSON` - JSON конфигурация ICE серверов (например: '[{"urls":"turn:yourdomain.com:3478","username":"user","credential":"secret123"}]'). По умолчанию используется внешний сервер 20.80.101.0.
 - `VITE_ICE_TRANSPORT_POLICY` - политика ICE транспорта (например: "all", "relay")
 
 ### Backend Configuration
@@ -38,12 +33,9 @@
 ## Пример значений для разработки
 
 ```bash
-TURN_USERNAME=devuser
-TURN_PASSWORD=devpass123
-TURN_REALM=localhost
 VITE_API_BASE=http://localhost:8000/api
 VITE_WS_BASE=ws://localhost:8000/ws
-VITE_ICE_JSON=[{"urls":"turn:localhost:3478","username":"devuser","credential":"devpass123"}]
+VITE_ICE_JSON=[{"urls":"stun:20.80.101.0:3478"},{"urls":["turn:20.80.101.0:3478?transport=udp","turn:20.80.101.0:3478?transport=tcp"],"username":"testuser","credential":"testpassword"}]
 VITE_ICE_TRANSPORT_POLICY=all
 PUBLIC_BASE_URL=http://localhost:5173
 LOG_TO_FILE=false
@@ -52,12 +44,9 @@ LOG_TO_FILE=false
 ## Пример значений для продакшена
 
 ```bash
-TURN_USERNAME=produser
-TURN_PASSWORD=prodpass456
-TURN_REALM=yourdomain.com
 VITE_API_BASE=https://yourdomain.com/api
 VITE_WS_BASE=wss://yourdomain.com/ws
-VITE_ICE_JSON=[{"urls":"turn:yourdomain.com:3478","username":"produser","credential":"prodpass456"}]
+VITE_ICE_JSON=[{"urls":"stun:20.80.101.0:3478"},{"urls":["turn:20.80.101.0:3478?transport=udp","turn:20.80.101.0:3478?transport=tcp"],"username":"testuser","credential":"testpassword"}]
 VITE_ICE_TRANSPORT_POLICY=relay
 PUBLIC_BASE_URL=https://yourdomain.com
 LOG_TO_FILE=true

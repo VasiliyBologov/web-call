@@ -3,7 +3,7 @@
 Видеозвонок по одной ссылке (без логинов), согласно PRD. Этот репозиторий содержит минимальный работающий прототип (MVP):
 - Бэкенд: FastAPI (Python) — сигнальный сервер (REST + WebSocket), in‑memory комнаты с TTL, лимит 2 участника;
 - Фронтенд: React + TypeScript + Vite — главная и страница комнаты, WebRTC (P2P) + WebSocket сигнализация;
-- Docker/Compose для локального запуска. STUN/TURN предполагается внешним (например, ваш coturn).
+- Docker для локального запуска. Используется внешний STUN/TURN сервер.
 
 
 ## 1) План действий (из PRD → к реализации)
@@ -16,7 +16,7 @@
    - `GET /` — кнопка «Создать ссылку», показ URL и QR.
    - `GET /r/:token` — две видеоплитки (локальная/удалённая), управление микрофоном/камерой, «Положить трубку», статусы подключения.
    - WebRTC (RTCPeerConnection) + обмен SDP/ICE через WS.
-3. Docker/Compose:
+3. Docker:
    - Отдельные контейнеры frontend и backend; порты 5173 (web) и 8000 (api/ws).
    - Переменные окружения для ICE‑серверов (STUN/TURN) и базовых URL.
 4. Проверка/инструкции:
@@ -29,30 +29,31 @@
 ## 2) Архитектура (MVP)
 - Frontend (Vite/React/TS): UI, getUserMedia, RTCPeerConnection, WS сигнализация.
 - Backend (FastAPI): комнаты, маршрутизация SDP/ICE, in‑memory состояние.
-- STUN/TURN: ваш coturn (вне этого репо). Для локальных тестов можно оставить пустую конфигурацию ICE.
+- STUN/TURN: используется внешний сервер `20.80.101.0:3478`.
 
-Поток подключения: клиент A и B открывают одну ссылку → WS соединение → обмен SDP/ICE → P2P‑медиа (при необходимости через TURN).
+Поток подключения: клиент A и B открывают одну ссылку → WS соединение → обмен SDP/ICE → P2P‑медиа (через TURN при необходимости).
 
 
 ## 3) Что реализовано в этом репозитории
 - backend/app/main.py — FastAPI app (REST + WS сигнализация).
 - backend/app/models.py — Pydantic‑модели сообщений/DTO.
 - backend/app/rooms.py — in‑memory хранилище комнат с TTL‑очисткой.
-- backend/Dockerfile, backend/requirements.txt.
-- frontend/ (Vite React TS): страницы Home и Room, WebRTC‑логика; Dockerfile.
-- docker-compose.yml — запуск сразу двух сервисов.
+- Dockerfile — запуск всего приложения (Frontend + Backend) в одном контейнере.
+- Nginx проксирует /api и /ws запросы на бэкенд (порт 8000 внутри).
 
-Ограничения MVP: P2P только на 2 участника; нет записи, нет выбора устройства; TURN должен быть ваш.
+Ограничения MVP: P2P только на 2 участника; нет записи, нет выбора устройства.
 
 
-## 4) Быстрый старт (Docker Compose)
-Требования: Docker и Docker Compose.
+## 4) Быстрый старт (Docker / Makefile)
+Требования: Docker.
 
 Команды:
 ```bash
-docker compose up --build
+make start
+# или
+make build && make up
 ```
-Откройте: http://localhost:5173
+Откройте: http://localhost:80
 
 ### Проверка здоровья системы
 
@@ -68,18 +69,7 @@ docker compose up --build
 
 ### Мониторинг (опционально)
 
-Для запуска с мониторингом и логированием:
-
-```bash
-# Запуск с мониторингом
-docker-compose --profile monitoring up -d
-
-# Запуск с логированием
-docker-compose --profile logging up -d
-
-# Полный стек мониторинга
-docker-compose --profile monitoring --profile logging up -d
-```
+Для запуска с мониторингом и логированием требуется дополнительная конфигурация (Prometheus/Grafana/Loki). В текущей версии Docker-стек упрощен до одного контейнера приложения.
 
 Доступ к дашбордам:
 - **Grafana:** http://localhost:3000 (admin/admin)
@@ -89,16 +79,16 @@ docker-compose --profile monitoring --profile logging up -d
 ### Диагностика проблем
 
 Подробная документация по диагностике и устранению проблем доступна в [DIAGNOSTICS.md](DIAGNOSTICS.md).
-- Если хотите открыть с другого устройства в той же сети (LAN), используйте IP вашей хост‑машины: http://<HOST_LAN_IP>:5173 (например, http://192.168.1.50:5173). Также задайте PUBLIC_BASE_URL=http://<HOST_LAN_IP>:5173, чтобы ссылки/QR были корректными для второго устройства.
+- Если хотите открыть с другого устройства в той же сети (LAN), используйте IP вашей хост‑машины: http://<HOST_LAN_IP>:80 (например, http://192.168.1.50:80). Также задайте PUBLIC_BASE_URL=http://<HOST_LAN_IP>:80, чтобы ссылки/QR были корректными для второго устройства.
 
 Проверка:
-1) Нажмите «Создать ссылку» на главной — появится URL вида `http://localhost:5173/r/<token>` и QR.
+1) Нажмите «Создать ссылку» на главной — появится URL вида `http://localhost/r/<token>` и QR.
 2) Откройте ссылку в двух разных браузерах/устройствах.
 3) Разрешите доступ к камере и микрофону (браузер спросит).
 4) Должно установиться P2P‑соединение, появятся два видео. Кнопки: Микрофон/Камера/Положить трубку.
 
 Примечания:
-- По умолчанию клиент использует публичные STUN-сервера (Google), поэтому соединение через NAT чаще всего устанавливается без доп. настройки. Для прод-среды для максимальной надёжности укажите свои TURN-серверы. В docker-compose можно переопределить ICE через VITE_ICE_JSON.
+- По умолчанию клиент использует предустановленный внешний STUN/TURN-сервер (`20.80.101.0`), поэтому соединение через NAT устанавливается корректно. При необходимости можно переопределить настройки через переменную `VITE_ICE_JSON`.
 - Клиент автоматически пытается восстанавливаться при сетевых сбоях: выполняет ICE‑restart, а при «ICE: failed» при наличии TURN переключается на режим только через TURN (relay). Если TURN не настроен, будет показано подсказка в UI.
 - Для совместимости с Safari клиент предпочитает кодек H.264 в SDP (если доступен).
 - getUserMedia работает на https или на http://localhost — в локальном запуске это допустимо.
@@ -129,16 +119,18 @@ npm run dev
 
 
 ## 6) Настройка ICE (STUN/TURN)
-Для прод‑среды укажите ваши ICE сервера (например, coturn). Пример значения для `VITE_ICE_JSON`:
+В проекте уже настроен по умолчанию внешний STUN/TURN сервер (`20.80.101.0`). Если вы хотите использовать свой, укажите его через переменную `VITE_ICE_JSON`.
+
+Пример значения для `VITE_ICE_JSON`:
 ```json
 [
-  { "urls": ["stun:turn.example.video:3478"], "username": "user", "credential": "secret" },
-  { "urls": ["turn:turn.example.video:3478?transport=udp", "turns:turn.example.video:5349?transport=tcp"], "username": "user", "credential": "secret" }
+  { "urls": ["stun:your.stun.server:3478"] },
+  { "urls": ["turn:your.turn.server:3478?transport=udp"], "username": "user", "credential": "password" }
 ]
 ```
-В `docker-compose.yml` это поле прокидывается как build‑arg в образ фронтенда.
+В `Dockerfile` это поле прокидывается как build‑arg в образ фронтенда.
 
-Проще всего передавать ICE‑настройки через файл `.env` рядом с `docker-compose.yml` (см. `.env.example`). Обязательно указывайте `VITE_ICE_JSON` одной строкой:
+Проще всего передавать ICE‑настройки через файл `.env` (см. `.env`). Обязательно указывайте `VITE_ICE_JSON` одной строкой.
 
 ```
 VITE_ICE_JSON=[{"urls":["stun:turn.example.video:3478"]},{"urls":["turn:turn.example.video:3478?transport=udp","turn:turn.example.video:3478?transport=tcp","turns:turn.example.video:5349?transport=tcp"],"username":"user","credential":"secret"}]
@@ -148,7 +140,7 @@ VITE_ICE_TRANSPORT_POLICY=all
 После изменения `.env` выполните пересборку, чтобы переменная попала в статический бандл фронтенда:
 
 ```bash
-docker compose up --build -d
+make start
 ```
 
 Также можно задать `PUBLIC_BASE_URL` для бэкенда (используется при генерации абсолютной ссылки `/api/rooms`).
@@ -163,7 +155,7 @@ docker compose up --build -d
 - При отключении одного клиента второй видит статус «собеседник вышел».
 
 Сетевые тесты:
-- Без UDP (firewall) — при наличии TURN‑TLS должен работать через TCP/TLS (нужно настроить ваш coturn + `VITE_ICE_JSON`).
+- Без UDP (firewall) — при наличии TURN‑TLS должен работать через TCP/TLS (нужно настроить корректный `VITE_ICE_JSON`).
 
 
 ## 8) Известные ограничения и заметки
@@ -195,7 +187,7 @@ frontend/
   package.json
   Dockerfile
 
-docker-compose.yml
+Dockerfile
 README.md
 ```
 
@@ -205,15 +197,15 @@ README.md
 
 
 ## 10) Доступ с другого устройства (LAN)
-- Не используйте адрес вида http://172.18.x.x:5173 — это внутренний адрес Docker-сети, он не доступен из вашей локальной сети (LAN).
-- Открывайте фронтенд по адресу хоста: http://<IP_хоста>:5173 (например, http://192.168.1.50:5173). Из обоих устройств используйте именно этот адрес.
-- Порты уже прокинуты в docker-compose.yml: 5173 (frontend) и 8000 (backend). Убедитесь, что файрвол на хосте разрешает входящие соединения на эти порты.
+- Не используйте адрес вида 172.x.x.x — это внутренний адрес Docker-сети, он не доступен из вашей локальной сети (LAN).
+- Открывайте фронтенд по адресу хоста: http://<IP_хоста>:80 (например, http://192.168.1.50:80). Из обоих устройств используйте именно этот адрес.
+- Порты уже прокинуты в Docker: 80 (Nginx). Убедитесь, что файрвол на хосте разрешает входящие соединения на эти порты.
 - Как узнать IP хоста:
   - macOS/Linux: `ip addr` или `ifconfig` (ищите адрес вашей Wi‑Fi/Ethernet сети, обычно 192.168.x.x/10.0.x.x).
   - Windows: `ipconfig`.
 - Абсолютные ссылки на комнату: чтобы сгенерированные бэкендом ссылки были «правильными» для второго устройства, задайте переменную окружения `PUBLIC_BASE_URL`:
-  - Создайте рядом с docker-compose.yml файл `.env` со строкой: `PUBLIC_BASE_URL=http://<IP_хоста>:5173`
-  - Перезапустите: `docker compose up --build`
+  - Создайте файл `.env` со строкой: `PUBLIC_BASE_URL=http://<IP_хоста>:80`
+  - Перезапустите: `make start`
 - Почему в логах виден 172.18.0.x:5173: это адрес контейнера в сети Docker. Он годится только для взаимодействия контейнеров между собой, но не для устройств в вашей LAN. Используйте IP хоста (компьютера, где запущен Docker).
 - Важно (камера/микрофон): браузеры требуют «защищённое происхождение» для getUserMedia. Это работает на HTTPS или на http://localhost. При открытии по IP (http://192.168.x.x) некоторые браузеры могут блокировать камеру/микрофон. Варианты:
   - Настроить локальный HTTPS (nginx/traefik с самоподписанным сертификатом).
@@ -254,7 +246,7 @@ ACR (Azure Container Registry) — это приватный реестр Docker
   - `resourceGroup` = ваш RG (например, `my-rg-webcall`)
   - `acrName` = имя ACR (например, `mywebcallacr`)
   - `webAppName` = имя Web App (например, `my-webcall-app`)
-- Запустите пайплайн. Он соберёт образы с помощью ACR Tasks (`az acr build`) и задеплоит docker-compose в ваш Web App.
+- Запустите пайплайн. Он соберёт образы с помощью ACR Tasks (`az acr build`) и задеплоит их в ваш Web App.
 
 Альтернативно: явные команды Azure CLI (без скрипта)
 ```bash
@@ -282,7 +274,7 @@ az webapp config appsettings set -g my-rg-webcall -n my-webcall-app --settings \
 - Имена ACR и Web App должны быть глобально уникальны.
 - В нашем azure-pipelines.yml переменная `acrLoginServer` формируется как `$(acrName).azurecr.io` — это верно для Public Azure. В суверенных облаках используйте фактическое значение `loginServer` из `az acr show`.
 - Можно включить ACR Admin user и использовать логин/пароль, но рекомендуемый способ — Managed Identity + роль `AcrPull` (как в скрипте).
-- Для PUBLIC_BASE_URL (абсолютные ссылки) задайте переменную окружения в Web App или в compose, если нужно.
+- Для PUBLIC_BASE_URL (абсолютные ссылки) задайте переменную окружения в Web App.
 
 
 ## 12) FAQ / Troubleshooting: «ICE: failed» — что это и почему происходит?
@@ -297,8 +289,8 @@ az webapp config appsettings set -g my-rg-webcall -n my-webcall-app --settings \
 - TURN‑сервер за NAT без `external-ip`/портов, либо закрыт диапазон медиапортов.
 
 Где настраивается ICE в этом репозитории:
-- frontend/src/config.ts — строит `ICE_SERVERS` из переменной окружения `VITE_ICE_JSON`. Если она пуста/`[]`, используются дефолтные публичные STUN‑сервера Google (этого может быть недостаточно в проде).
-- docker-compose.yml — аргумент сборки `VITE_ICE_JSON` для фронтенда. Укажите здесь ваш STUN/TURN.
+- frontend/src/config.ts — строит `ICE_SERVERS` из переменной окружения `VITE_ICE_JSON`. Если она пуста/`[]`, используются предустановленные серверы.
+- Dockerfile — аргумент сборки `VITE_ICE_JSON` для фронтенда. Укажите здесь ваш STUN/TURN.
 
 Пример рабочей конфигурации `VITE_ICE_JSON` (STUN + TURN с UDP/TCP/TLS):
 ```json
@@ -324,18 +316,6 @@ az webapp config appsettings set -g my-rg-webcall -n my-webcall-app --settings \
   - DNS и сертификат (для `turns:` CN/SAN должны совпадать с хостом).
 - Убедитесь, что `VITE_ICE_JSON` действительно применён: в прод‑сборке откройте DevTools → Network → посмотрите значение, зашитое в бандл (или логируйте `ICE_SERVERS`).
 - Для getUserMedia браузерам нужен https или http://localhost. Отсутствие https не вызывает «ICE: failed», но помешает включить камеру/микрофон и вы не дойдёте до ICE.
-
-Мини‑гайд по coturn (пример):
-- Базовые опции в turnserver.conf:
-  - `listening-port=3478`
-  - `tls-listening-port=5349` (или 443, если требуется обход корпоративных ограничений)
-  - `fingerprint`
-  - `lt-cred-mech`
-  - `realm=example.com`
-  - `user=user:secret` (или `userdb` для продакшена)
-  - `cert=/path/fullchain.pem` и `pkey=/path/privkey.pem` для TLS
-  - Если сервер за NAT: `external-ip=<PUBLIC_IP>`
-  - Ограничьте медиапорты: `min-port=49152`, `max-port=49999` и откройте их в фаерволе
 
 Типовые решения, если видите «ICE: failed»:
 - Добавьте/включите TURN и укажите его в `VITE_ICE_JSON` (UDP + TCP + TLS).
