@@ -2,7 +2,7 @@ import React from 'react'
 
 export const Landing: React.FC = () => {
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-emerald-500/30 overflow-hidden relative font-sans">
+    <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-emerald-500/30 overflow-x-hidden relative font-sans">
       {/* Background Decorative Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[120px] pointer-events-none"></div>
@@ -18,8 +18,7 @@ export const Landing: React.FC = () => {
           <span className="text-xl font-bold tracking-tight text-white">TalkLink</span>
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-          <a href="#" className="hover:text-white transition-colors text-xs uppercase tracking-widest">Как это работает</a>
-          <a href="#" className="hover:text-white transition-colors text-xs uppercase tracking-widest">Безопасность</a>
+          <a href="#how-it-works" className="hover:text-white transition-colors text-xs uppercase tracking-widest">Как это работает</a>
         </nav>
         <a 
           href="/call" 
@@ -60,9 +59,6 @@ export const Landing: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
             </svg>
           </a>
-          <button className="text-slate-400 hover:text-white font-medium flex items-center gap-2 px-6 py-4 transition-colors">
-            Узнать больше
-          </button>
         </div>
 
         {/* Feature Grid */}
@@ -103,6 +99,42 @@ export const Landing: React.FC = () => {
         </div>
       </main>
 
+      {/* How it works Section */}
+      <section id="how-it-works" className="relative z-10 max-w-5xl mx-auto px-6 py-32 border-t border-white/5">
+        <h2 className="text-3xl md:text-5xl font-black mb-16 text-center text-white tracking-tight">
+          Как работает TalkLink
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-blue-600/20 rounded-2xl flex items-center justify-center mb-6 text-blue-400 font-black text-2xl">
+              1
+            </div>
+            <h3 className="text-white font-bold text-xl mb-4">Создайте ссылку</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Нажмите «Создать ссылку» и мгновенно получите уникальный адрес для вашего видеозвонка.
+            </p>
+          </div>
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-emerald-600/20 rounded-2xl flex items-center justify-center mb-6 text-emerald-400 font-black text-2xl">
+              2
+            </div>
+            <h3 className="text-white font-bold text-xl mb-4">Отправьте собеседнику</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Скопируйте ссылку и отправьте её любому человеку. Ему не нужно ничего скачивать или регистрироваться.
+            </p>
+          </div>
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-teal-600/20 rounded-2xl flex items-center justify-center mb-6 text-teal-400 font-black text-2xl">
+              3
+            </div>
+            <h3 className="text-white font-bold text-xl mb-4">Начните общение</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Как только собеседник откроет ссылку, установится прямое защищенное соединение в вашем браузере.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <footer className="relative z-10 border-t border-white/5 py-12 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2 opacity-50">
@@ -115,7 +147,7 @@ export const Landing: React.FC = () => {
             &copy; 2026 TalkLink. Открытый исходный код • Приватность по умолчанию
           </div>
           <div className="flex gap-6">
-            <a href="#" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Twitter</a>
+            {/*<a href="#" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Twitter</a>*/}
             <a href="https://github.com/VasiliyBologov/web-call" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">GitHub</a>
           </div>
         </div>
