@@ -9,6 +9,8 @@ import VideocamIcon from '@mui/icons-material/Videocam'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
 import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
+import { useTranslation } from 'react-i18next'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 // Конфигурация retry логики
 const WS_RETRY_CONFIG = {
@@ -174,14 +176,15 @@ function detectInitialLayout(): 'portrait' | 'landscape' {
 }
 
 export const Room: React.FC<{ token: string }> = ({ token }) => {
-  const [status, setStatus] = useState<string>('инициализация')
+  const { t, i18n } = useTranslation()
+  const [status, setStatus] = useState<{ key?: string; params?: any; raw?: string }>({ key: 'room.status.init' })
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
   const [link] = useState<string>(() => `${window.location.origin}/r/${token}`)
 
   useEffect(() => {
-    document.title = 'TalkLink — Комната видеозвонка'
-  }, [])
+    document.title = `TalkLink — ${t('room.status.online')}`
+  }, [t])
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
@@ -332,12 +335,12 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     let closed = false
 
     async function start() {
-      setStatus('запрос устройств…')
+      setStatus({ key: 'room.status.devices' })
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         if (window.isSecureContext === false) {
-          throw new Error('Доступ к медиа-устройствам отклонен браузером из-за небезопасного соединения (HTTP). Для работы WebRTC требуется HTTPS или localhost.')
+          throw new Error('Media devices access denied by browser due to insecure connection (HTTP). WebRTC requires HTTPS or localhost.')
         }
-        throw new Error('Ваш браузер не поддерживает доступ к медиа-устройствам (navigator.mediaDevices не найден)')
+        throw new Error('Your browser does not support media devices access (navigator.mediaDevices not found)')
       }
       const videoConstraints: MediaTrackConstraints = { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
       let stream: MediaStream
@@ -401,7 +404,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         setHasCam(vids.length > 0)
       } catch {}
 
-      setStatus('создание peer connection…')
+      setStatus({ key: 'room.status.pc' })
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: ICE_TRANSPORT_POLICY })
       pcRef.current = pc
 
@@ -411,7 +414,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
       wirePcHandlers(pc)
 
-      setStatus('проверка ссылки…')
+      setStatus({ key: 'room.status.check' })
       try {
         // Backend will auto-create or recreate the room for this token
         const startTime = Date.now()
@@ -426,7 +429,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           API_RETRY_CONFIG,
           (attempt, error) => {
             console.warn(`API retry attempt ${attempt}:`, error)
-            setStatus(`повторная попытка API (${attempt})…`)
+            setStatus({ raw: `${t('room.status.check')} (${attempt})…` })
           }
         )
         networkDiagnostics.logConnection('api', true, undefined, Date.now() - startTime)
@@ -435,7 +438,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         networkDiagnostics.logConnection('api', false, e instanceof Error ? e.message : String(e))
         // Even if this fails (e.g., network hiccup), proceed to WS — server will still handle recreation
       }
-      setStatus('подключение к сигнализации…')
+      setStatus({ key: 'room.status.signaling' })
       function attachWsHandlers(ws: WebSocket) {
         wsRef.current = ws
         wsConnectionStateRef.current = 'connecting'
@@ -461,7 +464,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           if (pcRef.current && roleRef.current === 'offerer') {
             makeOffer().catch(e => console.warn('offer on ws open failed', e))
           }
-          setStatus('ожидание собеседника…')
+          setStatus({ key: 'room.status.waiting' })
         }
 
         ws.onmessage = async ev => {
@@ -469,19 +472,19 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           if (msg.type === 'error') {
             // Улучшенная обработка ошибок с деталями
             const errorMessage = msg.details ? `${msg.message}: ${msg.details}` : msg.message
-            setStatus(`Ошибка: ${msg.code}`)
+            setStatus({ raw: `${t('room.status.error')}: ${msg.code}` })
             console.error('WebSocket error received:', { code: msg.code, message: msg.message, details: msg.details, timestamp: msg.timestamp })
             
             // Специальная обработка для критических ошибок
             if (msg.code === 'room_full') {
               setRecover({ 
-                title: 'Комната заполнена', 
-                details: 'В эту комнату уже подключены максимальное количество участников. Создайте новую ссылку.' 
+                title: t('room.error.full.title'), 
+                details: t('room.error.full.desc') 
               })
             } else if (msg.code === 'kicked') {
               setRecover({ 
-                title: 'Отключен администратором', 
-                details: 'Ваше соединение было принудительно закрыто администратором.' 
+                title: t('room.error.kicked.title'), 
+                details: t('room.error.kicked.desc') 
               })
             }
             return
@@ -533,7 +536,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               }
               await pc.setLocalDescription(answer)
               send({ type: 'answer', peerId: peerIdRef.current, sdp: answer })
-              setStatus('в сети')
+              setStatus({ key: 'room.status.online' })
             } catch (e) {
               console.warn('Failed to handle remote offer', e)
             } finally {
@@ -551,7 +554,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
               await flushPendingCandidates()
-              setStatus('в сети')
+              setStatus({ key: 'room.status.online' })
             } catch (e) {
               console.warn('Failed to handle remote answer', e)
             }
@@ -576,7 +579,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               console.warn('Failed to add ICE', e)
             }
           } else if (msg.type === 'peer-left') {
-            setStatus('собеседник отключился — ожидание переподключения…')
+            setStatus({ key: 'room.status.disconnected' })
           }
         }
 
@@ -592,8 +595,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           wsLastErrorRef.current = `WebSocket closed: ${closeCode} - ${closeReason}`
           
           if (closeCode === 4403) {
-            setStatus('комната заполнена')
-            setRecover({ title: 'Комната заполнена', details: 'В эту комнату уже подключены 2 участника. Создайте новую ссылку.' })
+            setStatus({ key: 'room.status.roomFull' })
+            setRecover({ title: t('room.error.full.title'), details: t('room.error.full.desc') })
             return
           }
           
@@ -603,7 +606,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           
           if (attempt > WS_RETRY_CONFIG.maxAttempts) {
             wsConnectionStateRef.current = 'failed'
-            setStatus('не удалось подключиться к сигнализации')
+            setStatus({ key: 'room.error.create.title' })
             setRecover({ 
               title: 'Проблема с подключением', 
               details: `Не удалось подключиться к серверу после ${attempt} попыток. Проверьте интернет-соединение и попробуйте снова.` 
@@ -612,7 +615,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           }
           
           const delay = calculateRetryDelay(attempt, WS_RETRY_CONFIG)
-          setStatus(`сигнализация отключена — переподключение через ${Math.round(delay/1000)}с (${attempt}/${WS_RETRY_CONFIG.maxAttempts})…`)
+          setStatus({ raw: `${t('room.status.reconnecting')} (${attempt}/${WS_RETRY_CONFIG.maxAttempts})…` })
           
           if (wsReconnectTimerRef.current) {
             window.clearTimeout(wsReconnectTimerRef.current)
@@ -653,7 +656,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       const name = err?.name || 'Error'
       const message = err?.message || String(err)
       console.error('Initialization failed', err)
-      setStatus(`Ошибка инициализации: ${name}${message ? ': ' + message : ''}`)
+      setStatus({ raw: `${t('room.error.init.title')}: ${name}${message ? ': ' + message : ''}` })
     })
 
     return () => {
@@ -1007,7 +1010,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState
-      setStatus(`ICE: ${state}`)
+      setStatus({ raw: `ICE: ${state}` })
       if (state === 'connected' || state === 'completed') {
         hasEverConnectedRef.current = true
         iceRetriesRef.current = 0
@@ -1016,10 +1019,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           disconnectedTimerRef.current = null
         }
         setRecover(null)
-        setStatus('в сети')
+        setStatus({ key: 'room.status.online' })
       }
       if (state === 'disconnected') {
-        setStatus('переподключение…')
+        setStatus({ key: 'room.status.reconnecting' })
         if (disconnectedTimerRef.current) {
           window.clearTimeout(disconnectedTimerRef.current)
         }
@@ -1044,7 +1047,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           if (!hasEverConnectedRef.current) {
             showTurnError(turnInfo)
           } else {
-            setStatus('ожидание переподключения собеседника…')
+            setStatus({ key: 'room.status.disconnected' })
           }
         }
       }
@@ -1061,11 +1064,11 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   function showTurnError(turnInfo: { count: number; hasTls: boolean; hasUdp: boolean }) {
     const details = turnInfo.count === 0 
-      ? 'Требуется настроить TURN‑сервер и указать его в VITE_ICE_JSON (см. README → ICE/TURN).'
-      : `Настроено ${turnInfo.count} TURN серверов. Проверьте доступность портов ${turnInfo.hasUdp ? '3478/UDP, ' : ''}${turnInfo.hasTls ? '5349/TLS' : ''} и настройки firewall.`
+      ? 'Relay (TURN) server is required but not configured. See README.'
+      : `Configured ${turnInfo.count} TURN servers. Check ports ${turnInfo.hasUdp ? '3478/UDP, ' : ''}${turnInfo.hasTls ? '5349/TLS' : ''} and firewall.`
     
     setRecover({
-      title: 'Не удалось установить медиасоединение',
+      title: t('room.error.media.title'),
       details: details
     })
   }
@@ -1094,7 +1097,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         console.warn('relay makeOffer failed', e)
       }
     } else {
-      setStatus('ожидание переподключения…')
+      setStatus({ key: 'room.status.reconnecting' })
     }
   }
 
@@ -1130,7 +1133,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
       await pc.setLocalDescription(offer)
       send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
-      setStatus(iceRestart ? 'переподключение…' : 'подключение…')
+      setStatus({ key: 'room.status.reconnecting' })
     } catch (e) {
       console.warn('makeOffer failed', e)
     } finally {
@@ -1158,7 +1161,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
     } else {
       // For answerer, wait for remote restart; still update status
-      setStatus('переподключение…')
+      setStatus({ key: 'room.status.reconnecting' })
     }
   }
 
@@ -1347,7 +1350,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
 
   async function createNewRoom() {
     try {
-      setStatus('создание новой комнаты…')
+      setStatus({ key: 'room.btn.newRoom' })
       const startTime = Date.now()
       const data = await retryOperation(
         async () => {
@@ -1358,7 +1361,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         API_RETRY_CONFIG,
         (attempt, error) => {
           console.warn(`Create room retry attempt ${attempt}:`, error)
-          setStatus(`повторная попытка создания комнаты (${attempt})…`)
+          setStatus({ raw: `${t('room.btn.newRoom')} (${attempt})…` })
         }
       )
       
@@ -1370,10 +1373,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     } catch (e) {
       console.error('createNewRoom failed:', e)
       networkDiagnostics.logConnection('api', false, e instanceof Error ? e.message : String(e))
-      setStatus('Не удалось создать комнату')
+      setStatus({ key: 'room.error.create.title' })
       setRecover({ 
-        title: 'Ошибка создания комнаты', 
-        details: 'Не удалось создать новую комнату. Проверьте интернет-соединение и попробуйте снова.' 
+        title: t('room.error.create.title'), 
+        details: t('room.error.create.desc') 
       })
     }
   }
@@ -1388,19 +1391,20 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{recover.title}</div>
               {recover.details && <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 16 }}>{recover.details}</div>}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                <button onClick={createNewRoom} style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#1976d2', color: 'white', cursor: 'pointer' }}>Создать новую комнату</button>
-                <button onClick={() => (window.location.href = '/')} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ccc', background: 'white', color: '#111', cursor: 'pointer' }}>На главную</button>
+                <button onClick={createNewRoom} style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#1976d2', color: 'white', cursor: 'pointer' }}>{t('room.btn.newRoom')}</button>
+                <button onClick={() => (window.location.href = '/')} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid #ccc', background: 'white', color: '#111', cursor: 'pointer' }}>{t('room.btn.home')}</button>
               </div>
             </div>
           </div>
         )}
         <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2, transform: currentFacingMode === 'environment' ? 'none' : 'scaleX(-1)' }} />
-        <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3 }}>
-          <Tooltip title="Настройки">
+        <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3, display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <Tooltip title={t('room.settings')}>
             <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
               <SettingsIcon />
             </IconButton>
           </Tooltip>
+          <LanguageSwitcher />
           <Menu
             anchorEl={settingsAnchor}
             open={Boolean(settingsAnchor)}
@@ -1418,29 +1422,29 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
                     onChange={(e) => setAutoMuteOnBlur(e.target.checked)} 
                   />
                 }
-                label={<span style={{ fontSize: 14 }}>Отключать медиа при смене фокуса</span>}
+                label={<span style={{ fontSize: 14 }}>{t('room.settings.autoMute')}</span>}
                 sx={{ m: 0, width: '100%' }}
               />
             </MenuItem>
 
             {outputSupported && outputs.length > 0 && <Divider />}
             {outputSupported && outputs.length > 0 && (
-              <div style={{ padding: '8px 16px 4px', fontSize: 11, opacity: 0.6, fontWeight: 700, letterSpacing: 0.5 }}>ВЫВОД ЗВУКА</div>
+              <div style={{ padding: '8px 16px 4px', fontSize: 11, opacity: 0.6, fontWeight: 700, letterSpacing: 0.5 }}>{t('room.settings.audioOutput')}</div>
             )}
             {outputSupported && outputs.length > 0 && (
               <MenuItem selected={!sinkId} onClick={() => { applySink(null); closeSettings(); }}>
-                <span style={{ fontSize: 14 }}>Системный по умолчанию</span>
+                <span style={{ fontSize: 14 }}>{t('room.settings.default')}</span>
               </MenuItem>
             )}
             {outputSupported && outputs.length > 0 && outputs.map(d => (
               <MenuItem key={d.deviceId} selected={sinkId === d.deviceId} onClick={() => { applySink(d.deviceId); closeSettings(); }}>
-                <span style={{ fontSize: 14 }}>{d.label || 'Устройство вывода'}</span>
+                <span style={{ fontSize: 14 }}>{d.label || t('room.settings.outputDevice')}</span>
               </MenuItem>
             ))}
           </Menu>
         </div>
         <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
-          {status}
+          {status.raw || (status.key ? (t(status.key, status.params) as string) : '')}
           {wsConnectionStateRef.current === 'failed' && (
             <div style={{ marginTop: 4, fontSize: 10, opacity: 0.8 }}>
               WS: {wsLastErrorRef.current || 'Connection failed'}
@@ -1448,14 +1452,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           )}
         </div>
         <div style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', display: 'flex', gap: 8, zIndex: 3 }}>
-          <Tooltip title={hasMic ? (micOn ? 'Микрофон включен' : 'Микрофон выключен') : 'Микрофон не найден'}>
+          <Tooltip title={hasMic ? (micOn ? t('room.mic.on') : t('room.mic.off')) : t('room.mic.notFound')}>
             <span>
               <IconButton disabled={!hasMic} onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
                 {micOn && hasMic ? <MicIcon /> : <MicOffIcon />}
               </IconButton>
             </span>
           </Tooltip>
-          <Tooltip title={hasCam ? (camOn ? 'Камера включена' : 'Камера выключена') : 'Камера не найдена'}>
+          <Tooltip title={hasCam ? (camOn ? t('room.cam.on') : t('room.cam.off')) : t('room.cam.notFound')}>
             <span>
               <IconButton disabled={!hasCam} onClick={toggleCam} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
                 {camOn && hasCam ? <VideocamIcon /> : <VideocamOffIcon />}
@@ -1463,18 +1467,18 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </span>
           </Tooltip>
           {canSwitchCam && (
-            <Tooltip title="Переключить камеру">
+            <Tooltip title={t('room.cam.switch')}>
               <IconButton onClick={switchCamera} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
                 <CameraswitchIcon />
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title="Скопировать ссылку">
+          <Tooltip title={t('room.copyLink')}>
             <IconButton onClick={() => navigator.clipboard.writeText(link)} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
               <ContentCopyIcon />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Положить трубку">
+          <Tooltip title={t('room.hangup')}>
             <IconButton onClick={hangup} size="large" sx={{ bgcolor: 'rgba(211,47,47,0.9)', color: 'white', '&:hover': { bgcolor: 'rgba(198,40,40,1)' } }}>
               <CallEndIcon />
             </IconButton>
