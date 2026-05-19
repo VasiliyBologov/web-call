@@ -608,8 +608,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             wsConnectionStateRef.current = 'failed'
             setStatus({ key: 'room.error.create.title' })
             setRecover({ 
-              title: 'Проблема с подключением', 
-              details: `Не удалось подключиться к серверу после ${attempt} попыток. Проверьте интернет-соединение и попробуйте снова.` 
+              title: t('room.error.connection.title'), 
+              details: t('room.error.connection.desc', { attempt }) 
             })
             return
           }
@@ -1063,9 +1063,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   function showTurnError(turnInfo: { count: number; hasTls: boolean; hasUdp: boolean }) {
+    const ports = `${turnInfo.hasUdp ? '3478/UDP, ' : ''}${turnInfo.hasTls ? '5349/TLS' : ''}`
     const details = turnInfo.count === 0 
-      ? 'Relay (TURN) server is required but not configured. See README.'
-      : `Configured ${turnInfo.count} TURN servers. Check ports ${turnInfo.hasUdp ? '3478/UDP, ' : ''}${turnInfo.hasTls ? '5349/TLS' : ''} and firewall.`
+      ? t('room.error.turn.required')
+      : t('room.error.turn.details', { count: turnInfo.count, ports: ports })
     
     setRecover({
       title: t('room.error.media.title'),
@@ -1404,7 +1405,6 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               <SettingsIcon />
             </IconButton>
           </Tooltip>
-          <LanguageSwitcher />
           <Menu
             anchorEl={settingsAnchor}
             open={Boolean(settingsAnchor)}
@@ -1441,6 +1441,12 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
                 <span style={{ fontSize: 14 }}>{d.label || t('room.settings.outputDevice')}</span>
               </MenuItem>
             ))}
+
+            <Divider />
+            <div style={{ padding: '8px 16px 4px', fontSize: 11, opacity: 0.6, fontWeight: 700, letterSpacing: 0.5 }}>{t('room.settings.language')}</div>
+            <div style={{ padding: '4px 16px 8px' }}>
+              <LanguageSwitcher />
+            </div>
           </Menu>
         </div>
         <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', zIndex: 3, background: 'rgba(0,0,0,0.5)', color: 'white', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
