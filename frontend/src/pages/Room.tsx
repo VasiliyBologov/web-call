@@ -149,9 +149,15 @@ type WSMsg =
   | { type: 'error'; code: string; message: string; details?: string; timestamp?: string }
 
 function rid() {
-  const b = new Uint8Array(8)
-  crypto.getRandomValues(b)
-  return Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+  const key = 'tw_peer_id'
+  let id = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null
+  if (!id) {
+    const b = new Uint8Array(8)
+    crypto.getRandomValues(b)
+    id = Array.from(b, x => x.toString(16).padStart(2, '0')).join('')
+    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(key, id)
+  }
+  return id
 }
 
 function isMobileDevice(): boolean {
@@ -407,6 +413,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       setStatus({ key: 'room.status.pc' })
       const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceTransportPolicy: ICE_TRANSPORT_POLICY })
       pcRef.current = pc
+      if (typeof window !== 'undefined') (window as any).pc = pc
 
       stream.getTracks().forEach(t => pc.addTrack(t, stream))
       // Ensure only active tab sends
@@ -460,6 +467,19 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           send({ type: 'join', peerId: peerIdRef.current, role: 'offerer' })
           // Send current layout info (will be ignored if no peer yet)
           sendOrientation(localLayout)
+
+          // Отправляем сообщения из очереди
+          if (messageQueueRef.current.length > 0) {
+            console.log(`[WS] Sending ${messageQueueRef.current.length} queued messages`)
+            messageQueueRef.current.forEach(msg => {
+              if (ws.readyState === WebSocket.OPEN) {
+                console.log(`[WS] SEND QUEUED: ${msg.type}`, msg)
+                ws.send(JSON.stringify(msg))
+              }
+            })
+            messageQueueRef.current = []
+          }
+
           // If we're the offerer, proactively (re)send offer on WS reconnection
           if (pcRef.current && roleRef.current === 'offerer') {
             makeOffer().catch(e => console.warn('offer on ws open failed', e))
@@ -468,8 +488,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         }
 
         ws.onmessage = async ev => {
-          const msg: WSMsg = JSON.parse(ev.data)
-          if (msg.type === 'error') {
+          try {
+            const msg: WSMsg = JSON.parse(ev.data)
+            if (msg.type === 'error') {
             // Улучшенная обработка ошибок с деталями
             const errorMessage = msg.details ? `${msg.message}: ${msg.details}` : msg.message
             setStatus({ raw: `${t('room.status.error')}: ${msg.code}` })
@@ -580,7 +601,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           } else if (msg.type === 'peer-left') {
             setStatus({ key: 'room.status.disconnected' })
           }
+        } catch (e) {
+          console.error('[WS] Failed to process message:', e)
         }
+      }
 
         ws.onclose = (ev) => {
           if (closed) return
@@ -963,13 +987,18 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     pc.ontrack = async ev => {
       console.log('[WebRTC] Remote track received:', ev.track.kind, 'Streams:', ev.streams.length)
       
-      let remoteStream = ev.streams[0]
-      if (!remoteStream) {
-        console.warn('[WebRTC] No stream found in ontrack event, creating one from track')
-        remoteStream = new MediaStream([ev.track])
+      if (!remoteStreamRef.current) {
+        remoteStreamRef.current = new MediaStream()
       }
       
-      remoteStreamRef.current = remoteStream
+      // Добавляем трек в существующий стрим, если его там еще нет
+      const currentTracks = remoteStreamRef.current.getTracks()
+      if (!currentTracks.find(t => t.id === ev.track.id)) {
+        remoteStreamRef.current.addTrack(ev.track)
+        console.log(`[WebRTC] Added ${ev.track.kind} track to remoteStreamRef`)
+      }
+
+      const remoteStream = remoteStreamRef.current
       const el = remoteVideoRef.current as HTMLVideoElement | null
       
       if (el) {
@@ -998,13 +1027,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     // Perfect negotiation: when negotiation is needed, create an offer guarded by isMakingOfferRef
     pc.onnegotiationneeded = async () => {
       try {
-        if (isMakingOfferRef.current) return
-        isMakingOfferRef.current = true
         await makeOffer()
       } catch (e) {
         console.warn('onnegotiationneeded offer failed', e)
-      } finally {
-        isMakingOfferRef.current = false
       }
     }
     pc.oniceconnectionstatechange = () => {
@@ -1162,10 +1187,15 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  const messageQueueRef = useRef<any[]>([])
+
   function send(obj: any) {
     const ws = wsRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(obj))
+    } else {
+      console.log(`[WS] QUEUE: ${obj.type}`, obj)
+      messageQueueRef.current.push(obj)
     }
   }
 
