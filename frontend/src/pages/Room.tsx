@@ -515,8 +515,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             ensurePoliteFor((msg as any).peerId)
             const desc = new RTCSessionDescription(msg.sdp)
             const offerCollision = desc.type === 'offer' && (isMakingOfferRef.current || pc.signalingState !== 'stable')
-            ignoreOfferRef.current = !isPoliteRef.current && offerCollision
-            if (ignoreOfferRef.current) {
+            const isIgnore = !isPoliteRef.current && offerCollision
+            ignoreOfferRef.current = isIgnore
+            if (isIgnore) {
               console.warn('Ignoring offer due to glare (impolite).')
               return
             }
@@ -540,19 +541,17 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             } catch (e) {
               console.warn('Failed to handle remote offer', e)
             } finally {
-              // Reset ignore flag after processing
+              // Reset ignore flag after processing (if not returned early)
               ignoreOfferRef.current = false
             }
           } else if (msg.type === 'answer') {
             const pc = pcRef.current
             if (!pc) return
             ensurePoliteFor((msg as any).peerId)
-            if (ignoreOfferRef.current) {
-              console.warn('Ignoring answer due to glare handling in progress')
-              return
-            }
             try {
               await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+              // Glare situation resolved - reset ignore flag
+              ignoreOfferRef.current = false
               await flushPendingCandidates()
               setStatus({ key: 'room.status.online' })
             } catch (e) {
