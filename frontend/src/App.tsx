@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react'
-import { Landing } from './pages/Landing'
-import { Call } from './pages/Call'
-import { Room } from './pages/Room'
-import { Admin } from './pages/Admin'
+import React, { useMemo, lazy, Suspense } from 'react'
+
+const Landing = lazy(() => import('./pages/Landing').then(m => ({ default: m.Landing })))
+const Call = lazy(() => import('./pages/Call').then(m => ({ default: m.Call })))
+const Room = lazy(() => import('./pages/Room').then(m => ({ default: m.Room })))
+const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })))
 
 function useRoute() {
   const path = window.location.pathname
@@ -21,16 +22,21 @@ function useRoute() {
   } as const
 }
 
+const LoadingFallback = () => (
+  <div className="min-h-screen bg-[#020617] flex items-center justify-center">
+    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+  </div>
+)
+
 export const App: React.FC = () => {
   const { route, token } = useMemo(useRoute, [window.location.pathname])
-  if (route === 'room' && token) {
-    return <Room token={token} />
-  }
-  if (route === 'admin') {
-    return <Admin />
-  }
-  if (route === 'call') {
-    return <Call />
-  }
-  return <Landing />
+  
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      {route === 'room' && token && <Room token={token} />}
+      {route === 'admin' && <Admin />}
+      {route === 'call' && <Call />}
+      {route === 'landing' && <Landing />}
+    </Suspense>
+  )
 }
