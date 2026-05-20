@@ -109,6 +109,25 @@ class RoomStore:
         async with self._lock:
             return self._rooms.get(token)
 
+    async def join_room(self, token: str, peer_id: str) -> Optional[tuple[Room, list[str]]]:
+        """Atomic join and get other peers to ensure consistent role assignment"""
+        async with self._lock:
+            room = self._rooms.get(token)
+            if not room:
+                return None
+            
+            # Get others BEFORE joining
+            others = [p for p in room.peers.keys() if p != peer_id]
+            
+            # Now join
+            if peer_id not in room.peers:
+                if len(room.peers) >= room.max_participants:
+                    return room, others # Room full, but we return current state
+                room.peers[peer_id] = Peer(peer_id)
+                room.last_empty_since = None
+                
+            return room, others
+
     async def delete_room(self, token: str) -> None:
         async with self._lock:
             self._rooms.pop(token, None)

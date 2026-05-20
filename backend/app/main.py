@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse, Response
 from starlette.websockets import WebSocketState
 import uvicorn
 
-from app.models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
-from app.rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
+from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
+from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
 
 # Настройка логирования с детальной информацией
 logging.basicConfig(
@@ -152,12 +152,9 @@ async def create_room(request: Request):
     try:
         room = await store.create_room(max_participants=MAX_PARTICIPANTS_DEFAULT)
         # Используем PUBLIC_BASE_URL или базовый URL из запроса
-        base_url = "https://talklink.space"
+        base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         if not base_url:
-            # Если переменная окружения не задана, берем базовый URL из запроса
             base_url = str(request.base_url).rstrip("/")
-        else:
-            base_url = base_url.rstrip("/")
         
         url_path = f"/r/{room.token}"
         url = f"{base_url}{url_path}"
@@ -211,7 +208,7 @@ async def get_room(token: str):
 connections: Dict[str, Dict[str, WebSocket]] = {}
 
 # Retry конфигурация
-WS_RETRY_ATTEMPTS = int(os.getenv('WS_RETRY_ATTEMPTS', '3'))
+WS_RETRY_ATTEMPTS = int(os.getenv('WS_RETRY_ATTEMPTS', '10'))
 WS_RETRY_DELAY = float(os.getenv('WS_RETRY_DELAY', '1.0'))
 WS_MAX_RETRY_DELAY = float(os.getenv('WS_MAX_RETRY_DELAY', '30.0'))
 
@@ -283,36 +280,33 @@ async def handle_websocket_message(ws: WebSocket, token: str, peer_id: str, data
         return False
 
 async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dict):
-    """Обработка JOIN сообщения"""
+    """Обработка JOIN сообщения с атомарной регистрацией"""
     try:
         join = JoinMessage(**data)
-        room = await store.get_room(token)
         
-        if not room:
+        # Атомарно присоединяемся и получаем список участников
+        result = await store.join_room(token, join.peerId)
+        if not result:
             await send_error(ws, "room_not_found", "Room not found")
             return False
+            
+        room, others = result
         
-        # Проверка емкости
-        if room.participants >= room.max_participants and join.peerId not in room.peers:
+        # Проверка емкости (если мы не были в комнате и она заполнена)
+        if join.peerId not in room.peers and len(room.peers) >= room.max_participants:
             await send_error(ws, "room_full", f"Room is full (max {room.max_participants} participants)")
             await ws.close(code=4403)
             return False
         
-        ok = room.join(join.peerId)
-        if not ok:
-            await send_error(ws, "room_full", "Room is full")
-            await ws.close(code=4403)
-            return False
-        
-        # Регистрируем соединение
+        # Регистрируем соединение в глобальном реестре
         connections.setdefault(token, {})[join.peerId] = ws
-        logger.info(f"Peer joined: token={token}, peer={join.peerId}, total_participants={room.participants}")
+        logger.info(f"Peer joined: token={token}, peer={join.peerId}, total_participants={room.participants}, others_count={len(others)}")
         
-        # Отправляем информацию о комнате
+        # Отправляем информацию о комнате (список peers на момент входа)
         try:
             await ws.send_text(json.dumps({
                 "type": "room-info",
-                "peers": [p for p in room.peers.keys() if p != join.peerId],
+                "peers": others,
                 "max": room.max_participants,
                 "timestamp": datetime.utcnow().isoformat()
             }))
@@ -407,13 +401,18 @@ async def ws_room(ws: WebSocket, token: str):
                     success = await handle_websocket_message(ws, token, peer_id, data)
                     
                     # Фиксируем peer_id при успешном join
-                    if success and data.get("type") == "join" and not peer_id:
-                        peer_id = data.get("peerId")
+                    if success and data.get("type") == "join":
+                        new_peer_id = data.get("peerId")
+                        if new_peer_id:
+                            if peer_id and peer_id != new_peer_id:
+                                logger.info(f"Peer ID changed: {peer_id} -> {new_peer_id}")
+                            peer_id = new_peer_id
                     
                     if not success:
                         retry_count += 1
+                        logger.warning(f"Message handling failed ({retry_count}/{WS_RETRY_ATTEMPTS}) for {token}/{peer_id}")
                         if retry_count >= WS_RETRY_ATTEMPTS:
-                            logger.error(f"Too many failed messages for {token}/{peer_id}, closing connection")
+                            logger.error(f"Too many failed messages, closing connection")
                             break
                         continue
                     
@@ -450,7 +449,12 @@ async def ws_room(ws: WebSocket, token: str):
                         room.leave(peer_id)
                     
                     if token in connections and peer_id in connections[token]:
-                        del connections[token][peer_id]
+                        # Удаляем только если это то же самое соединение, которое мы создали
+                        if connections[token][peer_id] is ws:
+                            del connections[token][peer_id]
+                            logger.info(f"Connection removed from registry: {token}/{peer_id}")
+                        else:
+                            logger.debug(f"Registry already has newer connection for {token}/{peer_id}, skip removal")
                     
                     await broadcast(token, peer_id, {
                         "type": "peer-left", 
@@ -464,9 +468,14 @@ async def ws_room(ws: WebSocket, token: str):
                     logger.error(f"Error during peer cleanup: {e}")
 
 async def broadcast(token: str, from_peer: str, payload: dict):
-    """Улучшенная функция broadcast с обработкой ошибок"""
+    """Улучшенная функция broadcast с обработкой ошибок и детальным логированием"""
     peers = connections.get(token, {})
+    if not peers:
+        logger.debug(f"Broadcast: no peers in room {token} to send to (from {from_peer})")
+        return
+
     failed_peers = []
+    payload_type = payload.get("type", "unknown")
     
     for pid, socket in list(peers.items()):
         if pid == from_peer:
@@ -474,9 +483,9 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         
         try:
             await socket.send_text(json.dumps(payload))
-            logger.debug(f"Message sent to peer {pid} in room {token}")
+            logger.info(f"Broadcast: {payload_type} from {from_peer} sent to {pid} in room {token}")
         except Exception as e:
-            logger.warning(f"Failed to send message to peer {pid} in room {token}: {e}")
+            logger.warning(f"Broadcast failed: {payload_type} from {from_peer} to {pid}: {e}")
             failed_peers.append(pid)
     
     # Удаляем неработающие соединения

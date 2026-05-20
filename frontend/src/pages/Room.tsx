@@ -1096,8 +1096,6 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       } catch (e) {
         console.warn('relay makeOffer failed', e)
       }
-    } else {
-      setStatus({ key: 'room.status.reconnecting' })
     }
   }
 
@@ -1133,7 +1131,6 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       }
       await pc.setLocalDescription(offer)
       send({ type: 'offer', peerId: peerIdRef.current, sdp: offer })
-      setStatus({ key: 'room.status.reconnecting' })
     } catch (e) {
       console.warn('makeOffer failed', e)
     } finally {
