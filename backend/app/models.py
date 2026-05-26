@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ class JoinMessage(BaseModel):
 class SDPMessage(BaseModel):
     type: Literal["offer", "answer"]
     peerId: str
+    to: Optional[str] = None
     sdp: Any
 
 
@@ -32,6 +33,7 @@ class IceCandidate(BaseModel):
 class IceMessage(BaseModel):
     type: Literal["candidate"] = "candidate"
     peerId: str
+    to: Optional[str] = None
     candidate: IceCandidate
 
 
@@ -46,7 +48,7 @@ class OrientationMessage(BaseModel):
     layout: Literal["portrait", "landscape"]
 
 
-SignalMessage = JoinMessage | SDPMessage | IceMessage | ByeMessage | OrientationMessage
+SignalMessage = Union[JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage]
 
 
 class CreateRoomResponse(BaseModel):
@@ -60,6 +62,7 @@ class RoomInfo(BaseModel):
     participants: int
     maxParticipants: int = 2
     status: Literal["waiting", "active"]
+    expiresAt: float
 
 
 class ErrorMessage(BaseModel):

@@ -73,33 +73,36 @@ class RoomStore:
                 # best-effort cleanup; avoid crashing
                 pass
 
-    async def cleanup(self):
+    async def cleanup(self) -> list[str]:
         now = time.time()
         async with self._lock:
-            tokens_to_delete: Set[str] = set()
+            tokens_to_delete: list[str] = []
             for token, room in self._rooms.items():
                 if now >= room.expires_at:
-                    tokens_to_delete.add(token)
+                    tokens_to_delete.append(token)
                     continue
                 # Keep empty rooms until TTL to allow reconnection by previously generated link
             for token in tokens_to_delete:
                 self._rooms.pop(token, None)
+            return tokens_to_delete
 
-    async def create_room(self, max_participants: int = MAX_PARTICIPANTS_DEFAULT) -> Room:
+    async def create_room(self, max_participants: int = MAX_PARTICIPANTS_DEFAULT, ttl_seconds: Optional[int] = None) -> Room:
         token = self._generate_token()
         now = time.time()
-        room = Room(token=token, created_at=now, expires_at=now + self._ttl_seconds,
+        ttl = ttl_seconds if ttl_seconds is not None else self._ttl_seconds
+        room = Room(token=token, created_at=now, expires_at=now + ttl,
                     max_participants=max_participants)
         async with self._lock:
             self._rooms[token] = room
         return room
 
-    async def create_room_with_token(self, token: str, max_participants: int = MAX_PARTICIPANTS_DEFAULT) -> Room:
+    async def create_room_with_token(self, token: str, max_participants: int = MAX_PARTICIPANTS_DEFAULT, ttl_seconds: Optional[int] = None) -> Room:
         """Create (or recreate) a room with a specific token.
         Overwrites any existing room with the same token.
         """
         now = time.time()
-        room = Room(token=token, created_at=now, expires_at=now + self._ttl_seconds,
+        ttl = ttl_seconds if ttl_seconds is not None else self._ttl_seconds
+        room = Room(token=token, created_at=now, expires_at=now + ttl,
                     max_participants=max_participants)
         async with self._lock:
             self._rooms[token] = room

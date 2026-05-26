@@ -34,13 +34,41 @@ logger = logging.getLogger("webcall")
 
 store = RoomStore()
 
+async def cleanup_loop():
+    """Периодическая очистка комнат и закрытие WebSocket соединений при истечении TTL"""
+    while True:
+        try:
+            await asyncio.sleep(30)
+            expired_tokens = await store.cleanup()
+            for token in expired_tokens:
+                if token in connections:
+                    logger.info(f"Closing connections for expired room: {token}")
+                    peers = connections.pop(token, {})
+                    for peer_id, ws in peers.items():
+                        try:
+                            if ws.client_state != WebSocketState.DISCONNECTED:
+                                await ws.send_text(json.dumps({
+                                    "type": "error",
+                                    "code": "expired",
+                                    "message": "Meeting has expired",
+                                    "timestamp": datetime.utcnow().isoformat()
+                                }))
+                                await ws.close(code=4000, reason="Meeting expired")
+                        except Exception as e:
+                            logger.warning(f"Error closing ws for expired room {token}: {e}")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in cleanup_loop: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения с детальным логированием"""
+    cleanup_task = None
     try:
         # Startup logic
         logger.info("Lifespan: Starting Web Call Signaling Server")
-        store.start_cleanup()
+        cleanup_task = asyncio.create_task(cleanup_loop())
         logger.info("Lifespan: Room cleanup service started")
         
         yield
@@ -56,11 +84,13 @@ async def lifespan(app: FastAPI):
         logger.info("Lifespan: Shutting down Web Call Signaling Server")
         
         # Останавливаем сервис очистки
-        try:
-            store.stop_cleanup()
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
             logger.info("Lifespan: Room cleanup service stopped")
-        except Exception as e:
-            logger.error(f"Lifespan: Error stopping cleanup: {e}")
         
         # Закрываем все активные WebSocket соединения
         closed_count = 0
@@ -102,7 +132,7 @@ async def health():
     """Простой health check"""
     try:
         # Проверяем доступность хранилища комнат
-        room_count = len(store.rooms) if hasattr(store, 'rooms') else 0
+        room_count = len(store._rooms) if hasattr(store, '_rooms') else 0
         
         return {
             "status": "healthy",
@@ -167,13 +197,41 @@ async def create_room(request: Request):
         return CreateRoomResponse(
             token=room.token, 
             url=url, 
-            ttlSeconds=7 * 24 * 3600
+            ttlSeconds=int(room.expires_at - room.created_at)
         )
     except Exception as e:
         logger.error(f"Failed to create room: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create room: {str(e)}"
+        )
+
+@app.post("/api/meet", response_model=CreateRoomResponse)
+async def create_meeting(request: Request):
+    """Создание новой групповой встречи (до 10 человек, 30 минут)"""
+    try:
+        # Лимит 10 человек, 30 минут (1800 секунд)
+        room = await store.create_room(max_participants=10, ttl_seconds=1800)
+        
+        base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+        if not base_url:
+            base_url = str(request.base_url).rstrip("/")
+        
+        url_path = f"/m/{room.token}"
+        url = f"{base_url}{url_path}"
+        
+        logger.info(f"Meeting created: {room.token}, max_participants: {room.max_participants}")
+        
+        return CreateRoomResponse(
+            token=room.token, 
+            url=url, 
+            ttlSeconds=1800
+        )
+    except Exception as e:
+        logger.error(f"Failed to create meeting: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create meeting: {str(e)}"
         )
 
 @app.get("/api/rooms/{token}", response_model=RoomInfo)
@@ -196,7 +254,8 @@ async def get_room(token: str):
             token=token, 
             participants=room.participants, 
             maxParticipants=room.max_participants, 
-            status=status
+            status=status,
+            expiresAt=room.expires_at
         )
     except Exception as e:
         logger.error(f"Failed to get room {token}: {e}")
@@ -204,6 +263,29 @@ async def get_room(token: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get room info: {str(e)}"
         )
+
+@app.get("/api/meet/{token}", response_model=RoomInfo)
+async def get_meeting(token: str):
+    """Получение информации о митинге"""
+    try:
+        room = await store.get_room(token)
+        if not room:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+            
+        status = "active" if room.participants > 0 else "waiting"
+        
+        return RoomInfo(
+            token=token,
+            participants=room.participants,
+            maxParticipants=room.max_participants,
+            status=status,
+            expiresAt=room.expires_at
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get meeting {token}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # --- WebSocket signaling с улучшенной обработкой ошибок ---
 
@@ -471,7 +553,8 @@ async def ws_room(ws: WebSocket, token: str):
                     logger.error(f"Error during peer cleanup: {e}")
 
 async def broadcast(token: str, from_peer: str, payload: dict):
-    """Улучшенная функция broadcast с обработкой ошибок и детальным логированием"""
+    """Улучшенная функция broadcast с поддержкой адресной доставки (field 'to')"""
+    target = payload.get("to")
     peers = connections.get(token, {})
     if not peers:
         logger.debug(f"Broadcast: no peers in room {token} to send to (from {from_peer})")
@@ -480,6 +563,18 @@ async def broadcast(token: str, from_peer: str, payload: dict):
     failed_peers = []
     payload_type = payload.get("type", "unknown")
     
+    # Если указан адресат, отправляем только ему
+    if target:
+        socket = peers.get(target)
+        if socket:
+            try:
+                await socket.send_text(json.dumps(payload))
+                logger.debug(f"Targeted send: {payload_type} from {from_peer} to {target} in room {token}")
+            except Exception as e:
+                logger.warning(f"Targeted send failed to {target}: {e}")
+                failed_peers.append(target)
+        return
+
     for pid, socket in list(peers.items()):
         if pid == from_peer:
             continue
