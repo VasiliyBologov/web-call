@@ -11,7 +11,7 @@ export const Meet: React.FC = () => {
   const base = useMemo(() => window.location.origin, [])
 
   useEffect(() => {
-    document.title = `${t('nav.startCall')} — TalkLink`
+    document.title = `${t('nav.startMeet')} — TalkLink`
   }, [t])
 
   async function createMeet() {

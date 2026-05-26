@@ -44,6 +44,10 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const [sinkId, setSinkId] = useState<string | null>(localStorage.getItem('talklink_sink_id'))
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(null)
   const [canSwitchCam, setCanSwitchCam] = useState(false)
+  
+  useEffect(() => {
+    document.title = `TalkLink Meet — ${status === 'online' ? t('room.status.online') : status}`
+  }, [t, status])
 
   const wsRef = useRef<WebSocket | null>(null)
   const localVideoRef = useRef<HTMLVideoElement>(null)

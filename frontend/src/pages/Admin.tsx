@@ -27,7 +27,7 @@ export const Admin: React.FC = () => {
   const base = useMemo(() => window.location.origin, [])
 
   useEffect(() => {
-    document.title = 'TalkLink — Админ панель'
+    document.title = 'TalkLink — Admin Panel'
   }, [])
 
   async function load() {
@@ -35,7 +35,7 @@ export const Admin: React.FC = () => {
     setError(null)
     try {
       const res = await fetch(api('/api/admin/connections'))
-      if (!res.ok) throw new Error('Ошибка загрузки')
+      if (!res.ok) throw new Error('Load failed')
       const data = await res.json()
       setRooms((data.rooms || []) as AdminRoom[])
     } catch (e: any) {
@@ -46,13 +46,13 @@ export const Admin: React.FC = () => {
   }
 
   async function disconnect(token: string, peerId: string) {
-    if (!confirm(`Отключить peer ${peerId} из комнаты ${token}?`)) return
+    if (!confirm(`Disconnect peer ${peerId} from room ${token}?`)) return
     try {
       const res = await fetch(api(`/api/admin/connections/${encodeURIComponent(token)}/${encodeURIComponent(peerId)}`), { method: 'DELETE' })
-      if (!res.ok) throw new Error('Ошибка отключения')
+      if (!res.ok) throw new Error('Disconnect failed')
       await load()
     } catch (e) {
-      alert('Не удалось отключить подключение')
+      alert('Failed to disconnect')
     }
   }
 
@@ -75,29 +75,29 @@ export const Admin: React.FC = () => {
   return (
     <div style={{ maxWidth: 1000, margin: '24px auto', padding: 16, fontFamily: 'sans-serif' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <h1 style={{ margin: 0 }}>Админ панель</h1>
+        <h1 style={{ margin: 0 }}>Admin Panel</h1>
         <Stack direction="row" spacing={1}>
-          <IconButton onClick={load} color="primary" disabled={loading} title="Обновить">
+          <IconButton onClick={load} color="primary" disabled={loading} title="Refresh">
             <RefreshIcon />
           </IconButton>
         </Stack>
       </Stack>
 
-      {error && <div style={{ color: 'red', marginBottom: 12 }}>Ошибка: {error}</div>}
+      {error && <div style={{ color: 'red', marginBottom: 12 }}>Error: {error}</div>}
 
-      {rooms.length === 0 && <div>Активных подключений нет.</div>}
+      {rooms.length === 0 && <div>No active connections.</div>}
 
       <div>
         {rooms.map(room => (
           <div key={room.token} style={{ border: '1px solid #ddd', borderRadius: 8, padding: 12, marginBottom: 12 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1}>
               <div>
-                <div style={{ fontWeight: 600 }}>Комната: {room.token}</div>
-                <div style={{ color: '#555' }}>Статус: {room.status} · Участников: {room.participants}{room.maxParticipants ? ` / ${room.maxParticipants}` : ''}</div>
+                <div style={{ fontWeight: 600 }}>Room: {room.token}</div>
+                <div style={{ color: '#555' }}>Status: {room.status} · Participants: {room.participants}{room.maxParticipants ? ` / ${room.maxParticipants}` : ''}</div>
               </div>
               <Stack direction="row" spacing={1}>
                 <Button variant="outlined" endIcon={<OpenInNewIcon />} onClick={() => window.open(`${base}/r/${room.token}`, '_blank')}>
-                  Открыть комнату
+                  Open Room
                 </Button>
               </Stack>
             </Stack>
@@ -120,12 +120,12 @@ export const Admin: React.FC = () => {
                       </div>
                       <div>
                         <div>Peer: <code>{p.peerId}</code></div>
-                        <div style={{ color: '#777' }}>Подключен: {fmtTime(p.connectedAt)}</div>
+                        <div style={{ color: '#777' }}>Connected: {fmtTime(p.connectedAt)}</div>
                       </div>
                     </Stack>
                     <div>
                       <Button color="error" variant="outlined" startIcon={<PowerSettingsNewIcon />} onClick={() => disconnect(room.token, p.peerId)}>
-                        Отключить
+                        Disconnect
                       </Button>
                     </div>
                   </Stack>
@@ -137,7 +137,7 @@ export const Admin: React.FC = () => {
       </div>
 
       <div style={{ marginTop: 16, fontSize: 13, color: '#666' }}>
-        Подсказка: Для просмотра видео откройте нужную комнату. Учтите, что максимально 2 участника на комнату.
+        Tip: To view video, open the desired room. Note that there are at most 10 participants per room (Meet) or 2 (Call).
       </div>
     </div>
   )

@@ -214,10 +214,10 @@ async def create_room(request: Request):
 
 @app.post("/api/meet", response_model=CreateRoomResponse)
 async def create_meeting(request: Request):
-    """Создание новой групповой встречи (до 10 человек, 30 минут)"""
+    """Создание новой групповой встречи (до 10 человек, 2 часа)"""
     try:
-        # Лимит 10 человек, 30 минут (1800 секунд)
-        room = await store.create_room(max_participants=10, ttl_seconds=1800)
+        # Лимит 10 человек, 2 часа (7200 секунд)
+        room = await store.create_room(max_participants=10, ttl_seconds=7200)
         
         base_url = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
         if not base_url:
@@ -231,7 +231,7 @@ async def create_meeting(request: Request):
         return CreateRoomResponse(
             token=room.token, 
             url=url, 
-            ttlSeconds=1800
+            ttlSeconds=7200
         )
     except Exception as e:
         logger.error(f"Failed to create meeting: {e}")

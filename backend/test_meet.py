@@ -29,7 +29,7 @@ async def test_create_meeting():
     assert "token" in data
     assert "url" in data
     assert "/m/" in data["url"]
-    assert data["ttlSeconds"] == 1800
+    assert data["ttlSeconds"] == 7200
 
 @pytest.mark.asyncio
 async def test_get_meeting_info():

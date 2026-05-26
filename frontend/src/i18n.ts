@@ -41,7 +41,7 @@ const resources = {
       "call.scan": "Scan to Join",
       "meet.title1": "Create your",
       "meet.title2": "group meeting",
-      "meet.desc": "Up to 10 participants, duration 30 minutes. All connections are direct and private.",
+      "meet.desc": "Up to 10 participants, duration 2 hours. All connections are direct and private.",
       "meet.generate": "Create meeting",
       "call.steps.1.title": "Send the link",
       "call.steps.1.desc": "Copy the URL and send it to the participant via any messenger.",
@@ -126,10 +126,10 @@ const resources = {
       "call.copied": "Скопировано!",
       "call.enter": "Войти в комнату",
       "call.share": "Поделиться ссылкой",
-      "call.scan": "Scan to Join",
+      "call.scan": "Сканируйте для входа",
       "meet.title1": "Создайте ваше",
       "meet.title2": "групповое совещание",
-      "meet.desc": "До 10 участников, длительность 30 минут. Все соединения прямые и приватные.",
+      "meet.desc": "До 10 участников, длительность 2 часа. Все соединения прямые и приватные.",
       "meet.generate": "Создать совещание",
       "call.steps.1.title": "Отправьте ссылку",
       "call.steps.1.desc": "Скопируйте URL и отправьте собеседнику через любой мессенджер.",
@@ -198,10 +198,7 @@ i18n
   .use(initReactI18next)
   .init({
     resources,
-    fallbackLng: (code) => {
-      if (!code || code.startsWith('ru')) return 'ru'
-      return 'en'
-    },
+    fallbackLng: 'en',
     detection: {
       order: ['cookieLang', 'navigator'],
       caches: ['cookieLang'],
@@ -214,7 +211,7 @@ i18n
 // Custom logic for initial set
 const currentLang = Cookies.get('lang')
 if (!currentLang) {
-  const browserLang = navigator.language.toLowerCase()
+  const browserLang = (navigator.language || '').toLowerCase()
   const langToSet = browserLang.startsWith('ru') ? 'ru' : 'en'
   i18n.changeLanguage(langToSet)
   Cookies.set('lang', langToSet, { expires: 365 })
