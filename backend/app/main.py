@@ -11,12 +11,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, HTMLResponse, PlainTextResponse
 from starlette.websockets import WebSocketState
 import uvicorn
 
 from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
 from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
+from . import seo
 
 # Настройка логирования с детальной информацией
 logging.basicConfig(
@@ -717,6 +718,50 @@ async def admin_get_preview(token: str, peer_id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve preview: {str(e)}"
         )
+
+# --- SEO ROUTES ---
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt(request: Request):
+    host = request.headers.get("host", "")
+    subdomain = seo.get_subdomain(host)
+    return seo.get_robots_txt(subdomain, host)
+
+@app.get("/sitemap.xml", response_class=Response)
+async def sitemap_xml(request: Request):
+    host = request.headers.get("host", "")
+    subdomain = seo.get_subdomain(host)
+    return Response(content=seo.get_sitemap_xml(subdomain, host), media_type="application/xml")
+
+@app.get("/{path:path}", response_class=HTMLResponse)
+async def catch_all(request: Request, path: str):
+    # Ignore API and static files
+    if path.startswith("api/") or path.startswith("ws/") or "." in path:
+        raise HTTPException(status_code=404)
+        
+    subdomain = seo.get_subdomain(request.headers.get("host", ""))
+    metadata = seo.generate_metadata(subdomain, f"/{path}", request.headers.get("host", ""))
+    
+    # Path to index.html
+    # In Docker: /usr/share/nginx/html/index.html
+    # Local: frontend/index.html (source) or frontend/dist/index.html (build)
+    index_path = os.getenv("INDEX_HTML_PATH", "/usr/share/nginx/html/index.html")
+    if not os.path.exists(index_path):
+        # Fallback for development
+        for p in ["frontend/dist/index.html", "frontend/index.html"]:
+            if os.path.exists(p):
+                index_path = p
+                break
+    
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        
+        html = seo.inject_metadata(html, metadata, f"/{path}", request.headers.get("host", ""))
+        return html
+    except Exception as e:
+        logger.error(f"Failed to serve index.html: {e}")
+        return HTMLResponse(content="<html><body>Error loading page</body></html>", status_code=500)
 
 # Запуск сервера с улучшенной конфигурацией
 if __name__ == "__main__":
