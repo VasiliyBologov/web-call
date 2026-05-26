@@ -8,6 +8,7 @@ const resources = {
     translation: {
       "nav.howItWorks": "How it works",
       "nav.startCall": "Start Call",
+      "nav.startMeet": "Meetings",
       "hero.badge": "WebRTC v2.0 • Private Calls",
       "hero.title1": "Video calls",
       "hero.title2": "without extra steps",
@@ -95,6 +96,7 @@ const resources = {
     translation: {
       "nav.howItWorks": "Как это работает",
       "nav.startCall": "Начать звонок",
+      "nav.startMeet": "Совещания",
       "hero.badge": "WebRTC v2.0 • Приватные звонки",
       "hero.title1": "Видеосвязь",
       "hero.title2": "без лишних шагов",

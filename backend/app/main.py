@@ -134,6 +134,9 @@ async def health():
         # Проверяем доступность хранилища комнат
         room_count = len(store._rooms) if hasattr(store, '_rooms') else 0
         
+        # Проверяем переменные окружения
+        public_url = os.getenv("PUBLIC_BASE_URL", "not set")
+        
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
@@ -141,6 +144,9 @@ async def health():
             "rooms": {
                 "active": room_count,
                 "store_available": True
+            },
+            "config": {
+                "public_base_url": public_url
             }
         }
     except Exception as e:

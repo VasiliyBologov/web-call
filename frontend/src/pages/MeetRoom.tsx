@@ -110,11 +110,21 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
       }
     }
 
-    pc.ontrack = ({ streams: [stream] }) => {
-      console.log(`Received remote track from ${remotePeerId}`)
+    pc.ontrack = (event) => {
+      const [stream] = event.streams
+      console.log(`Received remote track from ${remotePeerId}: ${event.track.kind}`)
       const peer = peersRef.current.get(remotePeerId)
       if (peer) {
-        peer.stream = stream
+        // Use the existing stream or the new one
+        const remoteStream = stream || peer.stream || new MediaStream([event.track])
+        
+        // If it's a new track for an existing stream, it might not be in it yet
+        if (stream && !stream.getTracks().includes(event.track)) {
+           stream.addTrack(event.track)
+        }
+        
+        // Update peer object with the stream (creating a new object to trigger React update)
+        peersRef.current.set(remotePeerId, { ...peer, stream: remoteStream })
         setRemotePeers(new Map(peersRef.current))
       }
     }
@@ -194,11 +204,9 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
         await pc.setRemoteDescription(new RTCSessionDescription(sdp))
       }
 
-      if (type === 'offer') {
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        send({ type: 'answer', peerId: peerIdRef.current, to: senderId, sdp: answer })
-      }
+      const answer = await pc.createAnswer()
+      await pc.setLocalDescription(answer)
+      send({ type: 'answer', peerId: peerIdRef.current, to: senderId, sdp: answer })
       setRemotePeers(new Map(peersRef.current))
     } else if (type === 'answer') {
       const peer = peersRef.current.get(senderId)
@@ -246,7 +254,12 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
         const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
         wsRef.current = ws
         ws.onopen = () => {
-          ws.send(JSON.stringify({ type: 'join', peerId: peerIdRef.current, role: 'offerer' }))
+          ws.send(JSON.stringify({ 
+            type: 'join', 
+            peerId: peerIdRef.current, 
+            role: 'offerer', // Required by JoinMessage model
+            timestamp: new Date().toISOString()
+          }))
         }
         ws.onmessage = (e) => {
           if (handleSignalingRef.current) {
@@ -549,8 +562,31 @@ const RemoteVideo: React.FC<{ stream: MediaStream | null, sinkId: string | null 
   const videoRef = useRef<HTMLVideoElement>(null)
   
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
+    const video = videoRef.current
+    if (!video || !stream) return
+
+    video.srcObject = stream
+    
+    // In some browsers, adding a track to a stream already set as srcObject 
+    // doesn't trigger audio playback. Re-setting srcObject helps.
+    const handleTrackAdded = () => {
+      console.log('Track added to remote stream, updating srcObject')
+      video.srcObject = null
+      video.srcObject = stream
+      video.play().catch(() => {}) // Ensure it keeps playing
+    }
+    
+    stream.addEventListener('addtrack', handleTrackAdded)
+    
+    // Ensure it's playing
+    video.play().catch(err => {
+      if (err.name !== 'AbortError') {
+        console.warn('Remote video play failed:', err)
+      }
+    })
+
+    return () => {
+      stream.removeEventListener('addtrack', handleTrackAdded)
     }
   }, [stream])
 

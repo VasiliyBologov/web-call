@@ -31,7 +31,7 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     canonical_url = f"{protocol}://{host}{path}"
 
     noindex = False
-    if "/room/" in path or "/call/" in path:
+    if any(p in path for p in ["/room/", "/call/", "/meet", "/r/", "/m/"]):
         noindex = True
 
     return {
@@ -105,7 +105,7 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
         })
     
     # Room/Call pages: Product schema
-    elif "/room/" in path or "/call/" in path:
+    elif any(p in path for p in ["/room/", "/call/", "/meet", "/r/", "/m/"]):
         schemas.append({
             "@context": "https://schema.org",
             "@type": "Product",

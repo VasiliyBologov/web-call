@@ -40,6 +40,17 @@ up: env ## Запустить контейнер в фоновом режиме
 
 start: stop build up ## Собрать образ и запустить контейнер
 
+start-lan: env ## Запустить с автоматическим определением локального IP для доступа по Wi-Fi
+	@LOCAL_IP=$$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $$2}' | head -n 1); \
+	echo "Определен локальный IP: $$LOCAL_IP"; \
+	if [ -z "$$LOCAL_IP" ]; then echo "Ошибка: IP не найден"; exit 1; fi; \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		sed -i '' "s|PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://$$LOCAL_IP|g" .env; \
+	else \
+		sed -i "s|PUBLIC_BASE_URL=.*|PUBLIC_BASE_URL=http://$$LOCAL_IP|g" .env; \
+	fi; \
+	$(MAKE) start
+
 stop: ## Остановить и удалить контейнер
 	@docker stop $(CONTAINER_NAME) >/dev/null 2>&1 || true
 	@docker rm $(CONTAINER_NAME) >/dev/null 2>&1 || true
