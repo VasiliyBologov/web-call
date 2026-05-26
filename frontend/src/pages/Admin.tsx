@@ -109,9 +109,13 @@ export const Admin: React.FC = () => {
                     <Stack direction="row" spacing={1} alignItems="center">
                       <div style={{ width: 128, height: 72, background: '#f6f6f6', border: '1px solid #eee', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                         <img
-                          src={api(`/api/admin/preview/${encodeURIComponent(room.token)}/${encodeURIComponent(p.peerId)}`) + `?ts=${ts}`}
+                          src={api(`/api/admin/preview/${encodeURIComponent(room.token)}/${encodeURIComponent(p.peerId)}`)}
                           alt="preview"
+                          crossOrigin="use-credentials"
                           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
                         />
                       </div>
                       <div>

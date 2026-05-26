@@ -9,11 +9,13 @@ from typing import Dict, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, HTMLResponse, PlainTextResponse
 from starlette.websockets import WebSocketState
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
+import secrets
 
 from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
 from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
@@ -498,9 +500,36 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         del peers[pid]
         logger.info(f"Removed failed peer {pid} from room {token}")
 
+# --- Security ---
+security = HTTPBasic()
+
+def authenticate_admin(credentials: HTTPBasicCredentials = Depends(security)):
+    admin_user = os.getenv("ADMIN_USER", "admin")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin")
+    
+    current_username_bytes = credentials.username.encode("utf8")
+    correct_username_bytes = admin_user.encode("utf8")
+    is_correct_username = secrets.compare_digest(
+        current_username_bytes, correct_username_bytes
+    )
+    
+    current_password_bytes = credentials.password.encode("utf8")
+    correct_password_bytes = admin_password.encode("utf8")
+    is_correct_password = secrets.compare_digest(
+        current_password_bytes, correct_password_bytes
+    )
+    
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect login or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
 # --- Admin endpoints с улучшенной диагностикой ---
 @app.get("/api/admin/connections")
-async def admin_connections():
+async def admin_connections(username: str = Depends(authenticate_admin)):
     """Улучшенный endpoint для мониторинга соединений"""
     try:
         rooms = []
@@ -562,7 +591,7 @@ async def admin_connections():
         )
 
 @app.delete("/api/admin/connections/{token}/{peer_id}")
-async def admin_disconnect(token: str, peer_id: str):
+async def admin_disconnect(token: str, peer_id: str, username: str = Depends(authenticate_admin)):
     """Принудительное отключение участника администратором"""
     try:
         ws = connections.get(token, {}).get(peer_id)
@@ -605,7 +634,7 @@ async def admin_disconnect(token: str, peer_id: str):
 
 # --- Admin preview endpoints с улучшенной обработкой ошибок ---
 PREVIEW_MAX_BYTES = int(os.getenv('PREVIEW_MAX_BYTES', '300000'))
-PREVIEW_TTL_SECONDS = int(os.getenv('PREVIEW_TTL_SECONDS', '120'))
+PREVIEW_TTL_SECONDS = int(os.getenv('PREVIEW_TTL_SECONDS', '3600')) # Увеличено до 1 часа
 
 # Структура: previews[token][peer_id] = { 'bytes': bytes, 'type': str, 'ts': float }
 previews: Dict[str, Dict[str, dict]] = {}
@@ -686,7 +715,7 @@ async def admin_upload_preview(token: str, peer_id: str, request: Request):
         )
 
 @app.get("/api/admin/preview/{token}/{peer_id}")
-async def admin_get_preview(token: str, peer_id: str):
+async def admin_get_preview(token: str, peer_id: str, username: str = Depends(authenticate_admin)):
     """Получение превью с улучшенной обработкой ошибок"""
     try:
         _cleanup_previews()

@@ -283,13 +283,15 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   // --- Admin preview helpers ---
   function ensurePreviewTimer() {
     if (previewTimerRef.current) return
-    previewTimerRef.current = window.setInterval(() => {
+    // Upload preview only once after a short delay to ensure video is ready
+    previewTimerRef.current = window.setTimeout(() => {
       captureAndUploadPreview().catch(() => {})
-    }, 1000)
+      previewTimerRef.current = null
+    }, 3000)
   }
   function stopPreviewTimer() {
     if (previewTimerRef.current) {
-      window.clearInterval(previewTimerRef.current)
+      window.clearTimeout(previewTimerRef.current)
       previewTimerRef.current = null
     }
   }
