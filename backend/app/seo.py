@@ -35,8 +35,6 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     canonical_url = f"{protocol}://{host}{path}"
 
     noindex = False
-    if any(p in path for p in ["/room/", "/call/", "/meet", "/r/", "/m/"]):
-        noindex = True
 
     return {
         "title": title,
@@ -59,8 +57,6 @@ Disallow: /admin/
 Disallow: /cabinet/
 Disallow: /profile/
 Disallow: /temp/
-Disallow: /r/
-Disallow: /m/
 
 # Allow AI Bots
 User-agent: GPTBot
@@ -284,6 +280,7 @@ def inject_metadata(html: str, metadata: Dict[str, Any], path: str = "/", host: 
         html = html.replace('</head>', f'    {json_ld_scripts}\n</head>')
     
     if metadata.get("noindex"):
+        # Если принудительно установлен noindex в метаданных (сейчас всегда False)
         html = html.replace('<meta name="robots" content="index, follow" />',
                             '<meta name="robots" content="noindex, nofollow" />')
 
