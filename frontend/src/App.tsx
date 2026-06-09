@@ -6,17 +6,26 @@ const Meet = lazy(() => import('./pages/Meet').then(m => ({ default: m.Meet })))
 const Room = lazy(() => import('./pages/Room').then(m => ({ default: m.Room })))
 const MeetRoom = lazy(() => import('./pages/MeetRoom').then(m => ({ default: m.MeetRoom })))
 const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })))
+const SeoLanding = lazy(() => import('./pages/SeoLanding').then(m => ({ default: m.SeoLanding })))
+const BlogArticle = lazy(() => import('./pages/BlogArticle').then(m => ({ default: m.BlogArticle })))
 
 function useRoute() {
   const path = window.location.pathname
   const roomMatch = path.match(/^\/r\/([^/]+)$/)
   const meetRoomMatch = path.match(/^\/m\/([^/]+)$/)
+  const blogMatch = path.match(/^\/blog\/([^/]+)$/)
+  
+  const seoLandingPaths = ['/online-video-calls', '/web-calls', '/video-meetings', '/video-call-link']
+  const isSeoLanding = seoLandingPaths.includes(path)
+  
   const isAdmin = path === '/admin'
   const isCall = path === '/call'
   const isMeet = path === '/meet'
+  const isBlog = path === '/blog'
   
-  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' = 'landing'
+  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' = 'landing'
   let token: string | undefined = undefined
+  let slug: string | undefined = undefined
 
   if (roomMatch) {
     route = 'room'
@@ -24,15 +33,23 @@ function useRoute() {
   } else if (meetRoomMatch) {
     route = 'meet-room'
     token = decodeURIComponent(meetRoomMatch[1])
+  } else if (blogMatch) {
+    route = 'blog-article'
+    slug = blogMatch[1]
+  } else if (isSeoLanding) {
+    route = 'seo-landing'
+    slug = path.substring(1)
   } else if (isAdmin) {
     route = 'admin'
   } else if (isCall) {
     route = 'call'
   } else if (isMeet) {
     route = 'meet'
+  } else if (isBlog) {
+    route = 'blog'
   }
 
-  return { route, token } as const
+  return { route, token, slug } as const
 }
 
 const LoadingFallback = () => (
@@ -42,7 +59,7 @@ const LoadingFallback = () => (
 )
 
 export const App: React.FC = () => {
-  const { route, token } = useMemo(useRoute, [window.location.pathname])
+  const { route, token, slug } = useMemo(useRoute, [window.location.pathname])
   
   return (
     <Suspense fallback={<LoadingFallback />}>
@@ -52,6 +69,9 @@ export const App: React.FC = () => {
       {route === 'call' && <Call />}
       {route === 'meet' && <Meet />}
       {route === 'landing' && <Landing />}
+      {route === 'seo-landing' && slug && <SeoLanding slug={slug} />}
+      {route === 'blog' && <BlogArticle />}
+      {route === 'blog-article' && <BlogArticle slug={slug} />}
     </Suspense>
   )
 }

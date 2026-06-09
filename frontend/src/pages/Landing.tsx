@@ -117,6 +117,17 @@ export const Landing: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* SEO Content Block */}
+        <div className="mt-32 text-left max-w-4xl border-t border-white/5 pt-20">
+          <h2 className="text-3xl md:text-4xl font-black mb-8 text-white tracking-tight">
+            {t('seo.content.title')}
+          </h2>
+          <div className="space-y-6 text-slate-400 leading-relaxed text-lg">
+            <p>{t('seo.content.p1')}</p>
+            <p>{t('seo.content.p2')}</p>
+          </div>
+        </div>
       </main>
 
       {/* How it works Section */}
@@ -152,6 +163,21 @@ export const Landing: React.FC = () => {
               {t('how.step3.desc')}
             </p>
           </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="relative z-10 max-w-5xl mx-auto px-6 py-32 border-t border-white/5">
+        <h2 className="text-3xl md:text-5xl font-black mb-16 text-center text-white tracking-tight">
+          {t('faq.title')}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-sm">
+              <h3 className="text-white font-bold text-lg mb-4">{t(`faq.q${i}`)}</h3>
+              <p className="text-slate-400 text-sm leading-relaxed">{t(`faq.a${i}`)}</p>
+            </div>
+          ))}
         </div>
       </section>
 

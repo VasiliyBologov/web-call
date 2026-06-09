@@ -23,9 +23,12 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     if subdomain:
         title = f"Video Calls in {tenant_name} | Instant & Private"
         description = f"Join {tenant_name}'s private video communication portal. Instant WebRTC calls without registration or apps."
+    elif path == "/" or path == "":
+        title = "TalkLink - Online Video Calls and Web Meetings in Your Browser"
+        description = "Create secure online video calls and web meetings instantly. No downloads, no registration. Share a link and start talking."
     else:
-        title = "TalkLink — Video calls via a single link"
-        description = "Instant private video calls without registration and apps. Create a link and chat in the browser."
+        title = f"TalkLink - {path.strip('/').replace('-', ' ').capitalize()}"
+        description = f"Learn more about {path.strip('/').replace('-', ' ')} with TalkLink. Secure, instant video calls without registration."
 
     # Use the actual host for canonical URL
     protocol = "https" # Assume https in production
@@ -92,6 +95,11 @@ def get_sitemap_xml(subdomain: str, host: str) -> str:
         {"path": "/", "priority": "1.0", "changefreq": "daily"},
         {"path": "/call", "priority": "0.8", "changefreq": "weekly"},
         {"path": "/meet", "priority": "0.8", "changefreq": "weekly"},
+        {"path": "/online-video-calls", "priority": "0.9", "changefreq": "monthly"},
+        {"path": "/web-calls", "priority": "0.9", "changefreq": "monthly"},
+        {"path": "/video-meetings", "priority": "0.9", "changefreq": "monthly"},
+        {"path": "/video-call-link", "priority": "0.9", "changefreq": "monthly"},
+        {"path": "/blog", "priority": "0.8", "changefreq": "weekly"},
     ]
     
     url_entries = []
@@ -118,7 +126,7 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
     
     schemas = []
     
-    # Homepage schemas: WebSite and Organization
+    # Homepage schemas: WebSite, Organization, SoftwareApplication
     if not subdomain and (path == "/" or path == ""):
         schemas.append({
             "@context": "https://schema.org",
@@ -137,6 +145,49 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
             "name": "TalkLink",
             "url": f"{base_url}/",
             "logo": f"{base_url}/logo.png"
+        })
+        schemas.append({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            "name": "TalkLink",
+            "url": f"{base_url}/",
+            "applicationCategory": "CommunicationApplication",
+            "operatingSystem": "Web, iOS, Android, macOS, Windows",
+            "offers": {
+                "@type": "Offer",
+                "price": "0",
+                "priceCurrency": "USD"
+            }
+        })
+        schemas.append({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": "How do I start an online video call?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Click the 'Create Link' button on the homepage to instantly generate a unique room URL. Share this URL with participants to start your video call."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Can I make a video call without registration?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "Yes, TalkLink allows you to start video calls instantly without any registration, email, or account creation."
+                    }
+                },
+                {
+                    "@type": "Question",
+                    "name": "Do participants need to install software?",
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": "No, TalkLink works entirely in the web browser using WebRTC technology. No downloads or installations are required."
+                    }
+                }
+            ]
         })
     
     # Room/Call pages: Product schema
@@ -178,6 +229,23 @@ def inject_metadata(html: str, metadata: Dict[str, Any], path: str = "/", host: 
     # Replace Description
     html = re.sub(r'<meta name="description" content=".*?" />', 
                   f'<meta name="description" content="{metadata["description"]}" />', html)
+    
+    # Twitter tags
+    html = re.sub(r'<meta name="twitter:title" content=".*?" />',
+                  f'<meta name="twitter:title" content="{metadata["og_title"]}" />', html)
+    html = re.sub(r'<meta name="twitter:description" content=".*?" />',
+                  f'<meta name="twitter:description" content="{metadata["og_description"]}" />', html)
+    html = re.sub(r'<meta name="twitter:url" content=".*?" />',
+                  f'<meta name="twitter:url" content="{metadata["og_url"]}" />', html)
+    
+    # Hreflang tags
+    hreflangs = f"""
+    <link rel="alternate" hreflang="en" href="{metadata["canonical"]}" />
+    <link rel="alternate" hreflang="ru" href="{metadata["canonical"]}" />
+    <link rel="alternate" hreflang="ro" href="{metadata["canonical"]}" />
+    <link rel="alternate" hreflang="x-default" href="{metadata["canonical"]}" />
+    """
+    html = html.replace('</head>', f'{hreflangs}\n</head>')
     
     # Replace Canonical
     html = re.sub(r'<link rel="canonical" href=".*?" />', 
