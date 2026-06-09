@@ -25,10 +25,28 @@ export const SeoLanding: React.FC<{ slug: string }> = ({ slug }) => {
   const { t } = useTranslation()
   const page = SEO_PAGES[slug]
 
+  const faqIndices = Array.from({ length: 12 }, (_, i) => i + 1)
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqIndices.map(i => ({
+      "@type": "Question",
+      "name": t(`faq.q${i}`),
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": t(`faq.a${i}`)
+      }
+    }))
+  }
+
   if (!page) return <div>Page not found</div>
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       <header className="max-w-7xl mx-auto flex justify-between items-center px-6 py-8">
         <a href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 bg-gradient-to-tr from-blue-600 to-emerald-400 rounded-lg flex items-center justify-center">
@@ -63,6 +81,20 @@ export const SeoLanding: React.FC<{ slug: string }> = ({ slug }) => {
             <li>High-quality audio and video via WebRTC</li>
             <li>Works on all devices: desktop and mobile</li>
           </ul>
+
+          <div className="mt-20 pt-20 border-t border-white/5">
+            <h2 className="text-3xl font-black mb-12 text-white tracking-tight">
+              {t('faq.title')}
+            </h2>
+            <div className="space-y-8">
+              {faqIndices.map((i) => (
+                <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-sm">
+                  <h3 className="text-white font-bold text-lg mb-4">{t(`faq.q${i}`)}</h3>
+                  <p className="text-slate-400 text-sm leading-relaxed">{t(`faq.a${i}`)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </main>
 

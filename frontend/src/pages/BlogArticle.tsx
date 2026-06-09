@@ -10,6 +10,48 @@ const BLOG_ARTICLES: Record<string, any> = {
   'best-browser-video-calling-tools': {
     title: 'Best Browser Video Calling Tools',
     content: 'Comparison of best browser tools...'
+  },
+  'changelog-last-3-months': {
+    title: 'Обновления TalkLink: Что нового за последние 3 месяца',
+    content: (
+      <div className="space-y-8">
+        <p>
+          Мы постоянно работаем над улучшением TalkLink, чтобы сделать ваши видеозвонки еще более качественными, безопасными и удобными. Вот краткий обзор основных изменений и новых функций, появившихся за последние три месяца.
+        </p>
+        
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4">Июнь 2026</h2>
+          <ul className="list-disc pl-6 space-y-2">
+            <li><strong>9 июня 2026:</strong> Запуск системы блога и специализированных SEO-лендингов. Теперь нас легче найти в поиске, а вы можете читать полезные статьи о видеосвязи.</li>
+            <li><strong>9 июня 2026:</strong> Масштабное обновление SEO: динамическая генерация sitemap.xml и оптимизация robots.txt для лучшей индексации.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4">Май 2026</h2>
+          <ul className="list-disc pl-6 space-y-2">
+            <li><strong>26 мая 2026:</strong> Групповые встречи (Meet). Добавлена возможность создания комнат для совместной работы нескольких участников.</li>
+            <li><strong>26 мая 2026:</strong> Обновление панели управления: новый UI, поддержка английского языка по умолчанию и усиленная безопасность административных эндпоинтов.</li>
+            <li><strong>20 мая 2026:</strong> Оптимизация WebRTC: внедрена атомарная регистрация участников, улучшена обработка очереди сообщений и стабильность соединения.</li>
+            <li><strong>20 мая 2026:</strong> Эффекты видео: добавлена функция размытия фона (Background Blur) для вашего комфорта и приватности.</li>
+            <li><strong>19 мая 2026:</strong> Интернационализация: полноценная поддержка русского и английского языков с автоматическим определением предпочтений пользователя.</li>
+            <li><strong>18 мая 2026:</strong> "Auto mute on blur": функция автоматического отключения звука при переключении на другую вкладку.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 className="text-2xl font-bold text-white mb-4">Март 2026</h2>
+          <ul className="list-disc pl-6 space-y-2">
+            <li><strong>27 марта 2026:</strong> Глубокие ссылки (Deep Linking): улучшена интеграция с мобильными операционными системами iOS и Android.</li>
+            <li><strong>13 марта 2026:</strong> Динамические URL: гибкая настройка базовых адресов для ссылок на комнаты.</li>
+          </ul>
+        </section>
+
+        <p className="mt-8 italic">
+          Спасибо, что пользуетесь TalkLink! Мы продолжаем развиваться и готовим еще много интересного.
+        </p>
+      </div>
+    )
   }
   // ... rest of 10 articles
 }

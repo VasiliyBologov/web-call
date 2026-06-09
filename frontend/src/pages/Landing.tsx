@@ -4,8 +4,27 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export const Landing: React.FC = () => {
   const { t } = useTranslation()
+
+  const faqIndices = Array.from({ length: 12 }, (_, i) => i + 1)
+  const faqSchema = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": faqIndices.map(i => ({
+      "@type": "Question",
+      "name": t(`faq.q${i}`),
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": t(`faq.a${i}`)
+      }
+    }))
+  }
+
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-emerald-500/30 overflow-x-hidden relative font-sans">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       {/* Background Decorative Elements */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[80px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-600/20 rounded-full blur-[80px] pointer-events-none"></div>
@@ -172,7 +191,7 @@ export const Landing: React.FC = () => {
           {t('faq.title')}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+          {faqIndices.map((i) => (
             <div key={i} className="bg-white/5 border border-white/10 p-8 rounded-3xl backdrop-blur-sm">
               <h3 className="text-white font-bold text-lg mb-4">{t(`faq.q${i}`)}</h3>
               <p className="text-slate-400 text-sm leading-relaxed">{t(`faq.a${i}`)}</p>
