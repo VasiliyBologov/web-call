@@ -1,5 +1,6 @@
 import re
 import json
+from datetime import datetime
 from typing import Dict, Any
 
 def get_subdomain(host: str) -> str:
@@ -50,12 +51,33 @@ def get_robots_txt(subdomain: str, host: str) -> str:
     protocol = "https"
     return f"""User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /cabinet/
+Disallow: /profile/
+Disallow: /temp/
 
-Disallow: /api
-Disallow: /admin
-Disallow: /cabinet
-Disallow: /profile
-Disallow: /temp
+# Allow AI Bots
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
 
 Sitemap: {protocol}://{host}/sitemap.xml
 """
@@ -63,16 +85,29 @@ Sitemap: {protocol}://{host}/sitemap.xml
 def get_sitemap_xml(subdomain: str, host: str) -> str:
     """Generate dynamic sitemap.xml."""
     protocol = "https"
-    # In a real app, we might fetch room tokens or categories here.
-    # For MVP, we just include the home page.
+    now = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    # Static pages that should be indexed
+    pages = [
+        {"path": "/", "priority": "1.0", "changefreq": "daily"},
+        {"path": "/call", "priority": "0.8", "changefreq": "weekly"},
+        {"path": "/meet", "priority": "0.8", "changefreq": "weekly"},
+    ]
+    
+    url_entries = []
+    for page in pages:
+        url_entries.append(f"""    <url>
+        <loc>{protocol}://{host}{page['path']}</loc>
+        <lastmod>{now}</lastmod>
+        <changefreq>{page['changefreq']}</changefreq>
+        <priority>{page['priority']}</priority>
+    </url>""")
+    
+    urls_xml = "\n".join(url_entries)
+    
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-    <url>
-        <loc>{protocol}://{host}/</loc>
-        <lastmod>2024-05-26</lastmod>
-        <changefreq>daily</changefreq>
-        <priority>1.0</priority>
-    </url>
+{urls_xml}
 </urlset>
 """
 
