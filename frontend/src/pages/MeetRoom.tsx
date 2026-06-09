@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY, api } from '../config'
-import { IconButton, Tooltip, Menu, MenuItem, Divider } from '@mui/material'
+import { IconButton, Tooltip, Menu, MenuItem, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField } from '@mui/material'
 import CallEndIcon from '@mui/icons-material/CallEnd'
 import MicIcon from '@mui/icons-material/Mic'
 import MicOffIcon from '@mui/icons-material/MicOff'
@@ -18,12 +18,25 @@ interface MeetRoomProps {
 
 interface RemotePeer {
   peerId: string
+  name?: string
   pc: RTCPeerConnection
   stream: MediaStream | null
   polite: boolean
   makingOffer: () => boolean
   ignoreOffer: () => boolean
   setIgnoreOffer: (v: boolean) => void
+}
+
+const setCookie = (name: string, value: string, days: number) => {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/';
+}
+
+const getCookie = (name: string) => {
+  return document.cookie.split('; ').reduce((r, v) => {
+    const parts = v.split('=');
+    return parts[0] === name ? decodeURIComponent(parts[1]) : r
+  }, '');
 }
 
 export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
@@ -35,6 +48,11 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const [status, setStatus] = useState<string>('init')
   const [expiresAt, setExpiresAt] = useState<number | null>(null)
   const [timeLeft, setTimeLeft] = useState<string>('')
+  
+  // User name states
+  const [userName, setUserName] = useState<string>(getCookie('talklink_user_name') || '')
+  const [showNamePopup, setShowNamePopup] = useState<boolean>(true)
+  const [hasJoined, setHasJoined] = useState<boolean>(false)
   
   // Device states
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([])
@@ -162,15 +180,17 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   }, [send])
 
   const handleSignaling = useCallback(async (msg: any) => {
-    const { type, peerId: senderId, sdp, candidate, peers: others } = msg
+    const { type, peerId: senderId, name: senderName, sdp, candidate, peers: others } = msg
 
     if (type === 'room-info') {
       setStatus('online')
-      for (const otherId of others) {
+      for (const other of others) {
+        const otherId = other.peerId
+        const otherName = other.name
         if (!peersRef.current.has(otherId)) {
           const polite = peerIdRef.current < otherId
           const pcData = createPeerConnection(otherId, polite)
-          peersRef.current.set(otherId, { peerId: otherId, ...pcData, stream: null })
+          peersRef.current.set(otherId, { peerId: otherId, name: otherName, ...pcData, stream: null })
         }
       }
       setRemotePeers(new Map(peersRef.current))
@@ -178,7 +198,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
       if (!peersRef.current.has(senderId)) {
         const polite = peerIdRef.current < senderId
         const pcData = createPeerConnection(senderId, polite)
-        peersRef.current.set(senderId, { peerId: senderId, ...pcData, stream: null })
+        peersRef.current.set(senderId, { peerId: senderId, name: senderName, ...pcData, stream: null })
         setRemotePeers(new Map(peersRef.current))
       }
     } else if (type === 'offer') {
@@ -241,48 +261,55 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   handleSignalingRef.current = handleSignaling
 
   // Initialize Media and WS
-  useEffect(() => {
-    async function init() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        localStreamRef.current = stream
-        setLocalStream(stream)
+  const joinMeeting = useCallback(async () => {
+    if (!userName.trim()) return
+    
+    setCookie('talklink_user_name', userName, 365)
+    setShowNamePopup(false)
+    setHasJoined(true)
 
-        // Initial device enumeration
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const vids = devices.filter(d => d.kind === 'videoinput')
-        setVideoInputs(vids)
-        setOutputs(devices.filter(d => d.kind === 'audiooutput'))
-        setCanSwitchCam(vids.length > 1 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent))
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      localStreamRef.current = stream
+      setLocalStream(stream)
 
-        const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
-        wsRef.current = ws
-        ws.onopen = () => {
-          ws.send(JSON.stringify({ 
-            type: 'join', 
-            peerId: peerIdRef.current, 
-            role: 'offerer', // Required by JoinMessage model
-            timestamp: new Date().toISOString()
-          }))
-        }
-        ws.onmessage = (e) => {
-          if (handleSignalingRef.current) {
-            handleSignalingRef.current(JSON.parse(e.data))
-          }
-        }
-        ws.onclose = () => setStatus('disconnected')
-      } catch (err) {
-        console.error('Init failed', err)
-        setStatus('error')
+      // Initial device enumeration
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const vids = devices.filter(d => d.kind === 'videoinput')
+      setVideoInputs(vids)
+      setOutputs(devices.filter(d => d.kind === 'audiooutput'))
+      setCanSwitchCam(vids.length > 1 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent))
+
+      const ws = new WebSocket(wsUrl(`/ws/rooms/${token}`))
+      wsRef.current = ws
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ 
+          type: 'join', 
+          peerId: peerIdRef.current, 
+          role: 'offerer', // Required by JoinMessage model
+          name: userName,
+          timestamp: new Date().toISOString()
+        }))
       }
+      ws.onmessage = (e) => {
+        if (handleSignalingRef.current) {
+          handleSignalingRef.current(JSON.parse(e.data))
+        }
+      }
+      ws.onclose = () => setStatus('disconnected')
+    } catch (err) {
+      console.error('Init failed', err)
+      setStatus('error')
     }
-    init()
+  }, [token, userName])
+
+  useEffect(() => {
     return () => {
       wsRef.current?.close()
       localStreamRef.current?.getTracks().forEach(t => t.stop())
       peersRef.current.forEach(p => p.pc.close())
     }
-  }, [token])
+  }, [])
 
   const toggleMic = () => {
     if (localStreamRef.current) {
@@ -367,6 +394,59 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href)
     alert(t('call.copied'))
+  }
+
+  if (showNamePopup) {
+    return (
+      <Dialog open={true} maxWidth="xs" fullWidth PaperProps={{ sx: { bgcolor: '#0f172a', color: 'white', borderRadius: '1.5rem' } }}>
+        <DialogTitle sx={{ textAlign: 'center', pt: 4, fontWeight: 'bold' }}>
+          {t('room.namePopup.title', 'Welcome!')}
+        </DialogTitle>
+        <DialogContent>
+          <p className="text-slate-400 text-center mb-6">
+            {t('room.namePopup.subtitle', 'Please enter your display name to join the meeting')}
+          </p>
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder={t('room.namePopup.placeholder', 'Your Name')}
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && userName.trim() && joinMeeting()}
+            autoFocus
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                color: 'white',
+                bgcolor: 'rgba(255,255,255,0.05)',
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                '&.Mui-focused fieldset': { borderColor: '#2563eb' },
+                borderRadius: '1rem'
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 4, px: 3 }}>
+          <Button 
+            onClick={joinMeeting} 
+            disabled={!userName.trim()}
+            variant="contained" 
+            fullWidth
+            sx={{ 
+              py: 1.5, 
+              borderRadius: '1rem', 
+              bgcolor: '#2563eb',
+              '&:hover': { bgcolor: '#1d4ed8' },
+              fontWeight: 'bold',
+              textTransform: 'none',
+              fontSize: '1rem'
+            }}
+          >
+            {t('room.namePopup.join', 'Join Meeting')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    )
   }
 
   if (status === 'error') {
@@ -463,7 +543,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
             className={`w-full h-full object-cover ${currentFacingMode === 'user' ? 'mirror' : ''}`} 
           />
           <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-lg text-sm font-medium">
-            You {micOn ? '' : ' (Muted)'}
+            {userName} {micOn ? '' : ' (Muted)'}
           </div>
         </div>
 
@@ -472,7 +552,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
           <div key={peer.peerId} className="relative bg-slate-900 rounded-3xl overflow-hidden aspect-video border border-white/5 shadow-2xl">
             <RemoteVideo stream={peer.stream} sinkId={sinkId} />
             <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md px-3 py-1 rounded-lg text-sm font-medium">
-              Peer {peer.peerId.substring(0, 4)}
+              {peer.name || `Peer ${peer.peerId.substring(0, 4)}`}
             </div>
           </div>
         ))}

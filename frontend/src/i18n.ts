@@ -117,6 +117,10 @@ const resources = {
       "room.error.create.desc": "Failed to create a new room. Check your internet connection and try again.",
       "room.btn.newRoom": "Create new room",
       "room.btn.home": "Go home",
+      "room.namePopup.title": "Welcome!",
+      "room.namePopup.subtitle": "Please enter your display name to join the meeting",
+      "room.namePopup.placeholder": "Your Name",
+      "room.namePopup.join": "Join Meeting",
       "common.back": "Back"
     }
   },
@@ -233,6 +237,10 @@ const resources = {
       "room.error.create.desc": "Не удалось создать новую комнату. Проверьте интернет-соединение и попробуйте снова.",
       "room.btn.newRoom": "Создать новую комнату",
       "room.btn.home": "На главную",
+      "room.namePopup.title": "Добро пожаловать!",
+      "room.namePopup.subtitle": "Пожалуйста, введите ваше имя для входа в конференцию",
+      "room.namePopup.placeholder": "Ваше имя",
+      "room.namePopup.join": "Войти в конференцию",
       "common.back": "Вернуться"
     }
   },
@@ -349,6 +357,10 @@ const resources = {
       "room.error.create.desc": "Eșec la crearea unei camere noi. Verifică conexiunea la internet și încearcă din nou.",
       "room.btn.newRoom": "Creează cameră nouă",
       "room.btn.home": "Acasă",
+      "room.namePopup.title": "Bine ați venit!",
+      "room.namePopup.subtitle": "Vă rugăm să introduceți numele de afișare pentru a vă alătura întâlnirii",
+      "room.namePopup.placeholder": "Numele tău",
+      "room.namePopup.join": "Alătură-te întâlnirii",
       "common.back": "Înapoi"
     }
   }

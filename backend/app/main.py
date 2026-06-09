@@ -376,7 +376,7 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
         join = JoinMessage(**data)
         
         # Атомарно присоединяемся и получаем список участников
-        result = await store.join_room(token, join.peerId)
+        result = await store.join_room(token, join.peerId, name=join.name)
         if not result:
             await send_error(ws, "room_not_found", "Room not found")
             return False
@@ -391,7 +391,7 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
         
         # Регистрируем соединение в глобальном реестре
         connections.setdefault(token, {})[join.peerId] = ws
-        logger.info(f"Peer joined: token={token}, peer={join.peerId}, total_participants={room.participants}, others_count={len(others)}")
+        logger.info(f"Peer joined: token={token}, peer={join.peerId}, name={join.name}, total_participants={room.participants}, others_count={len(others)}")
         
         # Отправляем информацию о комнате (список peers на момент входа)
         try:
@@ -408,6 +408,7 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
         await broadcast(token, join.peerId, {
             "type": "peer-joined", 
             "peerId": join.peerId,
+            "name": join.name,
             "timestamp": datetime.utcnow().isoformat()
         })
         

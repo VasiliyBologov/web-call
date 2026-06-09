@@ -15,6 +15,7 @@ class JoinMessage(BaseModel):
     type: Literal["join"] = "join"
     peerId: str = Field(..., min_length=1, max_length=128)
     role: Role
+    name: Optional[str] = None
 
 
 class SDPMessage(BaseModel):
