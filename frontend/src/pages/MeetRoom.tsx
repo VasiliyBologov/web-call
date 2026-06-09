@@ -6,6 +6,8 @@ import MicIcon from '@mui/icons-material/Mic'
 import MicOffIcon from '@mui/icons-material/MicOff'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
+import ScreenShareIcon from '@mui/icons-material/ScreenShare'
+import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -45,6 +47,8 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const [remotePeers, setRemotePeers] = useState<Map<string, RemotePeer>>(new Map())
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
+  const [isSharingScreen, setIsSharingScreen] = useState(false)
+  const screenStreamRef = useRef<MediaStream | null>(null)
   const [status, setStatus] = useState<string>('init')
   const [expiresAt, setExpiresAt] = useState<number | null>(null)
   const [timeLeft, setTimeLeft] = useState<string>('')
@@ -307,6 +311,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
     return () => {
       wsRef.current?.close()
       localStreamRef.current?.getTracks().forEach(t => t.stop())
+      screenStreamRef.current?.getTracks().forEach(t => t.stop())
       peersRef.current.forEach(p => p.pc.close())
     }
   }, [])
@@ -379,6 +384,75 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
       
     } catch (e) {
       console.warn('switchCamera failed', e)
+    }
+  }
+
+  const stopScreenShare = async () => {
+    if (!screenStreamRef.current) return
+
+    try {
+      screenStreamRef.current.getTracks().forEach(track => track.stop())
+      screenStreamRef.current = null
+
+      const cameraTrack = localStreamRef.current?.getVideoTracks()[0]
+      
+      // Replace track in all PeerConnections
+      for (const peer of peersRef.current.values()) {
+        const sender = peer.pc.getSenders().find(s => s.track && s.track.kind === 'video')
+        if (sender) {
+          await sender.replaceTrack(cameraTrack || null)
+        }
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current
+      }
+
+      setIsSharingScreen(false)
+    } catch (e) {
+      console.error('stopScreenShare failed', e)
+    }
+  }
+
+  const toggleScreenShare = async () => {
+    if (isSharingScreen) {
+      await stopScreenShare()
+      return
+    }
+
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        alert("Screen sharing is not supported in this browser.")
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      screenStreamRef.current = stream
+      const screenTrack = stream.getVideoTracks()[0]
+
+      if (screenTrack) {
+        screenTrack.onended = () => {
+          stopScreenShare()
+        }
+
+        // Replace track in all PeerConnections
+        for (const peer of peersRef.current.values()) {
+          const sender = peer.pc.getSenders().find(s => s.track && s.track.kind === 'video')
+          if (sender) {
+            await sender.replaceTrack(screenTrack)
+          }
+        }
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream
+        }
+
+        setIsSharingScreen(true)
+      }
+    } catch (e: any) {
+      if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
+        console.error('getDisplayMedia error:', e)
+      }
     }
   }
 
@@ -593,6 +667,24 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
             }}
           >
             {camOn ? <VideocamIcon /> : <VideocamOffIcon />}
+          </IconButton>
+        </Tooltip>
+
+        <Tooltip title={isSharingScreen ? t('room.screenShare.stop') : t('room.screenShare.on')}>
+          <IconButton 
+            onClick={toggleScreenShare} 
+            size="large"
+            sx={{ 
+              p: 2.5,
+              borderRadius: '1.25rem',
+              bgcolor: isSharingScreen ? 'rgba(239, 68, 68, 0.9)' : 'rgba(30, 41, 59, 0.9)',
+              color: 'white',
+              '&:hover': { bgcolor: isSharingScreen ? 'rgba(220, 38, 38, 1)' : 'rgba(51, 65, 85, 1)' },
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)',
+              transition: 'all 0.2s'
+            }}
+          >
+            {isSharingScreen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
           </IconButton>
         </Tooltip>
 

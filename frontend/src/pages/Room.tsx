@@ -7,6 +7,8 @@ import MicIcon from '@mui/icons-material/Mic'
 import MicOffIcon from '@mui/icons-material/MicOff'
 import VideocamIcon from '@mui/icons-material/Videocam'
 import VideocamOffIcon from '@mui/icons-material/VideocamOff'
+import ScreenShareIcon from '@mui/icons-material/ScreenShare'
+import StopScreenShareIcon from '@mui/icons-material/StopScreenShare'
 import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { useTranslation } from 'react-i18next'
@@ -186,6 +188,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const [status, setStatus] = useState<{ key?: string; params?: any; raw?: string }>({ key: 'room.status.init' })
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
+  const [isSharingScreen, setIsSharingScreen] = useState(false)
+  const screenStreamRef = useRef<MediaStream | null>(null)
   const [link] = useState<string>(() => `${window.location.origin}/r/${token}`)
 
   useEffect(() => {
@@ -706,6 +710,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       iceRetriesRef.current = 0
       pcRef.current?.getSenders().forEach(s => s.track?.stop())
       localStreamRef.current?.getTracks().forEach(t => t.stop())
+      screenStreamRef.current?.getTracks().forEach(t => t.stop())
       pcRef.current?.close()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1371,6 +1376,72 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  async function stopScreenShare() {
+    if (!screenStreamRef.current) return
+
+    try {
+      screenStreamRef.current.getTracks().forEach(track => track.stop())
+      screenStreamRef.current = null
+
+      const pc = pcRef.current
+      const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+      const cameraTrack = localStreamRef.current?.getVideoTracks()[0]
+
+      if (sender) {
+        await sender.replaceTrack(cameraTrack || null)
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current
+      }
+
+      setIsSharingScreen(false)
+    } catch (e) {
+      console.error('stopScreenShare failed', e)
+    }
+  }
+
+  async function toggleScreenShare() {
+    if (isSharingScreen) {
+      await stopScreenShare()
+      return
+    }
+
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        alert("Screen sharing is not supported in this browser.")
+        return
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      screenStreamRef.current = stream
+      const screenTrack = stream.getVideoTracks()[0]
+
+      if (screenTrack) {
+        screenTrack.onended = () => {
+          stopScreenShare()
+        }
+
+        const pc = pcRef.current
+        const sender = pc?.getSenders().find(s => s.track?.kind === 'video')
+
+        if (sender) {
+          await sender.replaceTrack(screenTrack)
+        }
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream
+        }
+
+        setIsSharingScreen(true)
+      }
+    } catch (e: any) {
+      if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
+        console.error('getDisplayMedia error:', e)
+      }
+    }
+  }
+
   function hangup() {
     try { wsRef.current?.close() } catch {}
     try { pcRef.current?.close() } catch {}
@@ -1507,6 +1578,16 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               </IconButton>
             </Tooltip>
           )}
+          <Tooltip title={isSharingScreen ? t('room.screenShare.stop') : t('room.screenShare.on')}>
+            <IconButton onClick={toggleScreenShare} size="large" sx={{ 
+              bgcolor: isSharingScreen ? 'error.main' : 'rgba(0,0,0,0.5)', 
+              color: 'white', 
+              '&:hover': { bgcolor: isSharingScreen ? 'error.dark' : 'rgba(0,0,0,0.7)' } 
+            }}>
+              {isSharingScreen ? <StopScreenShareIcon /> : <ScreenShareIcon />}
+            </IconButton>
+          </Tooltip>
+
           <Tooltip title={t('room.copyLink')}>
             <IconButton onClick={() => navigator.clipboard.writeText(link)} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
               <ContentCopyIcon />
