@@ -1,7 +1,13 @@
 # robots.txt for https://talklink.space/
 User-agent: *
 Allow: /
-Disallow: /admin
+Disallow: /api/
+Disallow: /admin/
+Disallow: /cabinet/
+Disallow: /profile/
+Disallow: /temp/
+Disallow: /r/
+Disallow: /m/
 
 # Allow AI Bots
 User-agent: GPTBot

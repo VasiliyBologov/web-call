@@ -5,11 +5,43 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher'
 const BLOG_ARTICLES: Record<string, any> = {
   'how-to-create-online-video-call-no-registration': {
     title: 'How to Create an Online Video Call Without Registration',
-    content: 'Full article content about creating calls without registration...'
+    content: 'Learn how to start instant video calls without any account or registration. TalkLink provides a simple way to connect with anyone just by sharing a link.'
   },
   'best-browser-video-calling-tools': {
     title: 'Best Browser Video Calling Tools',
-    content: 'Comparison of best browser tools...'
+    content: 'Explore the top tools for video conferencing that work directly in your browser. We compare TalkLink, Google Meet, and other WebRTC-based solutions.'
+  },
+  'zoom-vs-browser-based-video-calls': {
+    title: 'Zoom vs Browser-Based Video Calls',
+    content: 'Do you really need to download an app? We compare the pros and cons of dedicated software like Zoom versus browser-based calling like TalkLink.'
+  },
+  'how-secure-are-browser-video-meetings': {
+    title: 'How Secure Are Browser Video Meetings',
+    content: 'Security is paramount. Learn about WebRTC encryption and how TalkLink ensures your meetings stay private and secure.'
+  },
+  'how-to-create-meeting-link-in-seconds': {
+    title: 'How to Create a Meeting Link in Seconds',
+    content: 'Speed matters. See how you can generate a secure meeting link and start your conversation in less than 5 seconds with TalkLink.'
+  },
+  'online-meetings-for-remote-teams': {
+    title: 'Online Meetings for Remote Teams',
+    content: 'Remote work is the new normal. Discover how browser-based video calls can simplify communication for your distributed team.'
+  },
+  'video-calls-for-freelancers': {
+    title: 'Video Calls for Freelancers',
+    content: 'As a freelancer, you need reliable and professional tools. TalkLink offers a friction-less way to meet with clients without requiring them to install anything.'
+  },
+  'video-calls-without-downloads': {
+    title: 'Video Calls Without Downloads',
+    content: 'Stop wasting time on software updates and installations. Browser video calls are the future of instant communication.'
+  },
+  'google-meet-alternative': {
+    title: 'Google Meet Alternative',
+    content: 'Looking for a simpler, more private alternative to Google Meet? See why TalkLink might be the perfect choice for your next meeting.'
+  },
+  'best-free-video-conferencing-tools': {
+    title: 'Best Free Video Conferencing Tools',
+    content: 'We list the best free tools for video calls in 2026. Focus on privacy, ease of use, and no-registration features.'
   },
   'changelog-last-3-months': {
     title: 'Обновления TalkLink: Что нового за последние 3 месяца',
@@ -53,8 +85,7 @@ const BLOG_ARTICLES: Record<string, any> = {
       </div>
     )
   }
-  // ... rest of 10 articles
-}
+};
 
 export const BlogArticle: React.FC<{ slug?: string }> = ({ slug }) => {
   const { t } = useTranslation()

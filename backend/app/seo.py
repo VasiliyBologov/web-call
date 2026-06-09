@@ -59,6 +59,8 @@ Disallow: /admin/
 Disallow: /cabinet/
 Disallow: /profile/
 Disallow: /temp/
+Disallow: /r/
+Disallow: /m/
 
 # Allow AI Bots
 User-agent: GPTBot
@@ -100,6 +102,17 @@ def get_sitemap_xml(subdomain: str, host: str) -> str:
         {"path": "/video-meetings", "priority": "0.9", "changefreq": "monthly"},
         {"path": "/video-call-link", "priority": "0.9", "changefreq": "monthly"},
         {"path": "/blog", "priority": "0.8", "changefreq": "weekly"},
+        {"path": "/blog/how-to-create-online-video-call-no-registration", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/best-browser-video-calling-tools", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/zoom-vs-browser-based-video-calls", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/how-secure-are-browser-video-meetings", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/how-to-create-meeting-link-in-seconds", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/online-meetings-for-remote-teams", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/video-calls-for-freelancers", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/video-calls-without-downloads", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/google-meet-alternative", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/best-free-video-conferencing-tools", "priority": "0.7", "changefreq": "monthly"},
+        {"path": "/blog/changelog-last-3-months", "priority": "0.7", "changefreq": "monthly"},
     ]
     
     url_entries = []
