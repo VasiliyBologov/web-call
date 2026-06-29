@@ -16,13 +16,22 @@ def get_subdomain(host: str) -> str:
         return parts[0]
     return ""
 
-def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
-    """Generate dynamic metadata based on subdomain and path."""
+def generate_metadata(subdomain: str, path: str, host: str, room_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Generate dynamic metadata based on subdomain, path and room data."""
     tenant_name = subdomain.capitalize() if subdomain else "TalkLink"
     
-    if subdomain:
+    if room_data:
+        title = f"{room_data['title']} - Live in {room_data.get('country', 'the world')}"
+        description = f"Watch this {room_data['category']} live stream on TalkLink Live Window. Real people showing their world in real-time."
+    elif subdomain:
         title = f"Video Calls in {tenant_name} | Instant & Private"
         description = f"Join {tenant_name}'s private video communication portal. Instant WebRTC calls without registration or apps."
+    elif path == "/live-window":
+        title = "Live Window - Explore the World through Live Video"
+        description = "Virtual travel through real-time video streams from people around the world. Open a window to another place."
+    elif path == "/live/start":
+        title = "Start Live Window - Share Your World"
+        description = "Begin your live broadcast and show the world what's around you. No registration required."
     elif path == "/" or path == "":
         title = "TalkLink - Online Video Calls and Web Meetings in Your Browser"
         description = "Create secure online video calls and web meetings instantly. No downloads, no registration. Share a link and start talking."

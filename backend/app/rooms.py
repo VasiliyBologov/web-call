@@ -26,6 +26,18 @@ class Room:
     max_participants: int = MAX_PARTICIPANTS_DEFAULT
     peers: Dict[str, Peer] = field(default_factory=dict)
     last_empty_since: Optional[float] = None
+    
+    # Live Window fields
+    is_public: bool = False
+    title: Optional[str] = None
+    category: Optional[str] = None
+    streamer_peer_id: Optional[str] = None
+    location_level: Optional[str] = "country" # country, city, region, hidden
+    country: Optional[str] = None
+    city: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    chat_enabled: bool = True
 
     def join(self, peer_id: str) -> bool:
         if peer_id in self.peers:
@@ -87,15 +99,49 @@ class RoomStore:
                 self._rooms.pop(token, None)
             return tokens_to_delete
 
-    async def create_room(self, max_participants: int = MAX_PARTICIPANTS_DEFAULT, ttl_seconds: Optional[int] = None) -> Room:
+    async def create_room(self, max_participants: int = MAX_PARTICIPANTS_DEFAULT, 
+                          ttl_seconds: Optional[int] = None,
+                          is_public: bool = False,
+                          title: Optional[str] = None,
+                          category: Optional[str] = None,
+                          location_level: Optional[str] = "country",
+                          country: Optional[str] = None,
+                          city: Optional[str] = None,
+                          lat: Optional[float] = None,
+                          lng: Optional[float] = None,
+                          chat_enabled: bool = True) -> Room:
         token = self._generate_token()
         now = time.time()
         ttl = ttl_seconds if ttl_seconds is not None else self._ttl_seconds
-        room = Room(token=token, created_at=now, expires_at=now + ttl,
-                    max_participants=max_participants)
+        room = Room(
+            token=token, 
+            created_at=now, 
+            expires_at=now + ttl,
+            max_participants=max_participants,
+            is_public=is_public,
+            title=title,
+            category=category,
+            location_level=location_level,
+            country=country,
+            city=city,
+            lat=lat,
+            lng=lng,
+            chat_enabled=chat_enabled
+        )
         async with self._lock:
             self._rooms[token] = room
         return room
+
+    async def get_public_rooms(self, category: Optional[str] = None, country: Optional[str] = None) -> list[Room]:
+        async with self._lock:
+            rooms = [r for r in self._rooms.values() if r.is_public]
+            if category:
+                rooms = [r for r in rooms if r.category == category]
+            if country:
+                rooms = [r for r in rooms if r.country == country]
+            # Сортировка: сначала новые
+            rooms.sort(key=lambda r: r.created_at, reverse=True)
+            return rooms
 
     async def create_room_with_token(self, token: str, max_participants: int = MAX_PARTICIPANTS_DEFAULT, ttl_seconds: Optional[int] = None) -> Room:
         """Create (or recreate) a room with a specific token.

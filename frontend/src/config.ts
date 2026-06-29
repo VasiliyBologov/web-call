@@ -145,3 +145,16 @@ export function wsUrl(path: string) {
   }
   return `${base}${p}`;
 }
+
+export const LIVE_CATEGORIES = [
+  "City Walk", "Nature", "Travel", "Fishing", "Sea & Beach", 
+  "Events", "Sports", "Weather", "Animals", "Culture", 
+  "Transportation", "Random", "Other"
+];
+
+export const LOCATION_LEVELS = [
+  { id: 'country', name: 'Country Only' },
+  { id: 'city', name: 'City Level' },
+  { id: 'region', name: 'Region Level (Approximate)' },
+  { id: 'hidden', name: 'Hidden' }
+];

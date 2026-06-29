@@ -8,11 +8,15 @@ const MeetRoom = lazy(() => import('./pages/MeetRoom').then(m => ({ default: m.M
 const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })))
 const SeoLanding = lazy(() => import('./pages/SeoLanding').then(m => ({ default: m.SeoLanding })))
 const BlogArticle = lazy(() => import('./pages/BlogArticle').then(m => ({ default: m.BlogArticle })))
+const LiveWindow = lazy(() => import('./pages/LiveWindow').then(m => ({ default: m.LiveWindow })))
+const StartLive = lazy(() => import('./pages/StartLive').then(m => ({ default: m.StartLive })))
+const LiveStream = lazy(() => import('./pages/LiveStream').then(m => ({ default: m.LiveStream })))
 
 function useRoute() {
   const path = window.location.pathname
   const roomMatch = path.match(/^\/r\/([^/]+)$/)
   const meetRoomMatch = path.match(/^\/m\/([^/]+)$/)
+  const liveStreamMatch = path.match(/^\/live\/([^/]+)$/)
   const blogMatch = path.match(/^\/blog\/([^/]+)$/)
   
   const seoLandingPaths = ['/online-video-calls', '/web-calls', '/video-meetings', '/video-call-link']
@@ -22,14 +26,21 @@ function useRoute() {
   const isCall = path === '/call'
   const isMeet = path === '/meet'
   const isBlog = path === '/blog'
+  const isLiveWindow = path === '/live-window'
+  const isStartLive = path === '/live/start'
   
-  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' = 'landing'
+  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' | 'live-window' | 'start-live' | 'live-stream' = 'landing'
   let token: string | undefined = undefined
   let slug: string | undefined = undefined
 
   if (roomMatch) {
     route = 'room'
     token = decodeURIComponent(roomMatch[1])
+  } else if (isStartLive) {
+    route = 'start-live'
+  } else if (liveStreamMatch) {
+    route = 'live-stream'
+    token = decodeURIComponent(liveStreamMatch[1])
   } else if (meetRoomMatch) {
     route = 'meet-room'
     token = decodeURIComponent(meetRoomMatch[1])
@@ -47,6 +58,8 @@ function useRoute() {
     route = 'meet'
   } else if (isBlog) {
     route = 'blog'
+  } else if (isLiveWindow) {
+    route = 'live-window'
   }
 
   return { route, token, slug } as const
@@ -72,6 +85,9 @@ export const App: React.FC = () => {
       {route === 'seo-landing' && slug && <SeoLanding slug={slug} />}
       {route === 'blog' && <BlogArticle />}
       {route === 'blog-article' && <BlogArticle slug={slug} />}
+      {route === 'live-window' && <LiveWindow />}
+      {route === 'start-live' && <StartLive />}
+      {route === 'live-stream' && token && <LiveStream token={token} />}
     </Suspense>
   )
 }

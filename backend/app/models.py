@@ -49,7 +49,15 @@ class OrientationMessage(BaseModel):
     layout: Literal["portrait", "landscape"]
 
 
-SignalMessage = Union[JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage]
+class ChatMessage(BaseModel):
+    type: Literal["chat"] = "chat"
+    peerId: str
+    name: Optional[str] = None
+    text: str
+    timestamp: float = Field(default_factory=lambda: 0.0)
+
+
+SignalMessage = Union[JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage, ChatMessage]
 
 
 class CreateRoomResponse(BaseModel):
@@ -64,6 +72,30 @@ class RoomInfo(BaseModel):
     maxParticipants: int = 2
     status: Literal["waiting", "active"]
     expiresAt: float
+
+
+class LiveRoomInfo(BaseModel):
+    token: str
+    title: str
+    category: str
+    participants: int
+    country: Optional[str] = None
+    city: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    createdAt: float
+    streamerPeerId: Optional[str] = None
+
+
+class CreateLiveRoomRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    category: str
+    locationLevel: Literal["country", "city", "region", "hidden"] = "country"
+    country: Optional[str] = None
+    city: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    chatEnabled: bool = True
 
 
 class ErrorMessage(BaseModel):

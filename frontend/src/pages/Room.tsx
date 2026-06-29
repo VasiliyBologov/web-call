@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { ICE_SERVERS, wsUrl, ICE_TRANSPORT_POLICY, api } from '../config'
 import { IconButton, Tooltip, Menu, MenuItem, FormControlLabel, Switch, Divider } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import CallEndIcon from '@mui/icons-material/CallEnd'
 import MicIcon from '@mui/icons-material/Mic'
@@ -185,6 +187,8 @@ function detectInitialLayout(): 'portrait' | 'landscape' {
 
 export const Room: React.FC<{ token: string }> = ({ token }) => {
   const { t, i18n } = useTranslation()
+  const theme = useTheme()
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const [status, setStatus] = useState<{ key?: string; params?: any; raw?: string }>({ key: 'room.status.init' })
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(true)
@@ -518,7 +522,9 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           }
           if (msg.type === 'room-info') {
             // decide role
-            const others = Array.isArray(msg.peers) ? msg.peers : []
+            const rawPeers = Array.isArray(msg.peers) ? msg.peers : []
+            const others = rawPeers.map((p: any) => typeof p === 'string' ? p : p.peerId).filter(Boolean)
+            
             if (others.length > 0) {
               ensurePoliteFor(others[0])
             }
@@ -1497,7 +1503,27 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </div>
           </div>
         )}
-        <video ref={localVideoRef} autoPlay muted playsInline style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', right: 'calc(16px + env(safe-area-inset-right, 0px))', width: localLayout === 'portrait' ? 135 : 240, height: localLayout === 'portrait' ? 240 : 135, objectFit: 'cover', background: '#222', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.4)', border: '2px solid rgba(255,255,255,0.3)', zIndex: 2, transform: currentFacingMode === 'environment' ? 'none' : 'scaleX(-1)' }} />
+        <video 
+          ref={localVideoRef} 
+          autoPlay 
+          muted 
+          playsInline 
+          style={{ 
+            position: 'absolute', 
+            bottom: isSmallScreen ? 'calc(84px + env(safe-area-inset-bottom, 0px))' : 'calc(16px + env(safe-area-inset-bottom, 0px))', 
+            right: 'calc(16px + env(safe-area-inset-right, 0px))', 
+            width: isSmallScreen ? (localLayout === 'portrait' ? 90 : 160) : (localLayout === 'portrait' ? 135 : 240), 
+            height: isSmallScreen ? (localLayout === 'portrait' ? 160 : 90) : (localLayout === 'portrait' ? 240 : 135), 
+            objectFit: 'cover', 
+            background: '#222', 
+            borderRadius: 8, 
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)', 
+            border: '2px solid rgba(255,255,255,0.3)', 
+            zIndex: 2, 
+            transform: currentFacingMode === 'environment' ? 'none' : 'scaleX(-1)',
+            transition: 'all 0.3s ease-in-out'
+          }} 
+        />
         <div style={{ position: 'absolute', top: 'calc(16px + env(safe-area-inset-top, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', zIndex: 3, display: 'flex', gap: '8px', alignItems: 'center' }}>
           <Tooltip title={t('room.settings')}>
             <IconButton onClick={openSettings} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
@@ -1556,7 +1582,17 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             </div>
           )}
         </div>
-        <div style={{ position: 'absolute', bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', left: 'calc(16px + env(safe-area-inset-left, 0px))', display: 'flex', gap: 8, zIndex: 3 }}>
+        <div style={{ 
+          position: 'absolute', 
+          bottom: 'calc(16px + env(safe-area-inset-bottom, 0px))', 
+          left: 'calc(16px + env(safe-area-inset-left, 0px))', 
+          right: isSmallScreen ? 'calc(16px + env(safe-area-inset-right, 0px))' : 'auto',
+          display: 'flex', 
+          gap: isSmallScreen ? 6 : 8, 
+          zIndex: 3,
+          justifyContent: isSmallScreen ? 'center' : 'flex-start',
+          flexWrap: 'wrap'
+        }}>
           <Tooltip title={hasMic ? (micOn ? t('room.mic.on') : t('room.mic.off')) : t('room.mic.notFound')}>
             <span>
               <IconButton disabled={!hasMic} onClick={toggleMic} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>

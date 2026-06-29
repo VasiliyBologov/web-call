@@ -17,7 +17,11 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 import secrets
 
-from .models import CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, SDPMessage, IceMessage, ByeMessage, OrientationMessage
+from .models import (
+    Role, CreateRoomResponse, RoomInfo, ErrorMessage, JoinMessage, 
+    SDPMessage, IceMessage, ByeMessage, OrientationMessage,
+    CreateLiveRoomRequest, LiveRoomInfo, ChatMessage
+)
 from .rooms import RoomStore, MAX_PARTICIPANTS_DEFAULT
 from . import seo
 
@@ -361,6 +365,10 @@ async def handle_websocket_message(ws: WebSocket, token: str, peer_id: str, data
         elif msg_type == "orientation":
             return await handle_orientation_message(ws, token, peer_id, data)
         
+        # CHAT
+        elif msg_type == "chat":
+            return await handle_chat_message(ws, token, peer_id, data)
+        
         else:
             await send_error(ws, "unknown_type", f"Unknown message type: {msg_type}")
             return False
@@ -383,6 +391,16 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
             
         room, others = result
         
+        # Специальная логика для публичных трансляций
+        if room.is_public and join.role == Role.offerer:
+            if not room.streamer_peer_id:
+                # Назначаем стримером того, кто пришел с ролью offerer
+                room.streamer_peer_id = join.peerId
+                logger.info(f"Streamer assigned: {join.peerId} for room {token}")
+            
+            # Если это не стример, он автоматически становится answerer
+            # (но это больше логика фронтенда, бэкенд просто разрешает подключение)
+        
         # Проверка емкости (если мы не были в комнате и она заполнена)
         if join.peerId not in room.peers and len(room.peers) >= room.max_participants:
             await send_error(ws, "room_full", f"Room is full (max {room.max_participants} participants)")
@@ -399,6 +417,7 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
                 "type": "room-info",
                 "peers": others,
                 "max": room.max_participants,
+                "streamerPeerId": room.streamer_peer_id,
                 "timestamp": datetime.utcnow().isoformat()
             }))
         except Exception as e:
@@ -465,6 +484,28 @@ async def handle_orientation_message(ws: WebSocket, token: str, peer_id: str, da
     except Exception as e:
         logger.error(f"Orientation message handling failed: {e}")
         await send_error(ws, "bad_orientation", f"Invalid orientation message: {str(e)}")
+        return False
+
+async def handle_chat_message(ws: WebSocket, token: str, peer_id: str, data: dict):
+    """Обработка сообщений чата (broadcast на всех)"""
+    try:
+        chat = ChatMessage(**data)
+        if chat.timestamp == 0:
+            chat.timestamp = time.time()
+        
+        room = await store.get_room(token)
+        if not room:
+            return False
+            
+        if not room.chat_enabled:
+            await send_error(ws, "chat_disabled", "Chat is disabled in this room")
+            return False
+
+        await broadcast(token, chat.peerId, chat.model_dump(), include_self=True)
+        return True
+    except Exception as e:
+        logger.error(f"Chat message handling failed: {e}")
+        await send_error(ws, "bad_chat", f"Invalid chat message: {str(e)}")
         return False
 
 @app.websocket("/ws/rooms/{token}")
@@ -539,6 +580,10 @@ async def ws_room(ws: WebSocket, token: str):
                     room = await store.get_room(token)
                     if room:
                         room.leave(peer_id)
+                        if room.is_public and room.streamer_peer_id == peer_id:
+                            room.streamer_peer_id = None
+                            logger.info(f"Streamer left room {token}")
+                            # В будущем можно автоматически закрывать комнату, если стример ушел
                     
                     if token in connections and peer_id in connections[token]:
                         # Удаляем только если это то же самое соединение, которое мы создали
@@ -559,7 +604,7 @@ async def ws_room(ws: WebSocket, token: str):
                 except Exception as e:
                     logger.error(f"Error during peer cleanup: {e}")
 
-async def broadcast(token: str, from_peer: str, payload: dict):
+async def broadcast(token: str, from_peer: str, payload: dict, include_self: bool = False):
     """Улучшенная функция broadcast с поддержкой адресной доставки (field 'to')"""
     target = payload.get("to")
     peers = connections.get(token, {})
@@ -583,7 +628,7 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         return
 
     for pid, socket in list(peers.items()):
-        if pid == from_peer:
+        if not include_self and pid == from_peer:
             continue
         
         try:
@@ -601,6 +646,87 @@ async def broadcast(token: str, from_peer: str, payload: dict):
             pass
         del peers[pid]
         logger.info(f"Removed failed peer {pid} from room {token}")
+
+@app.get("/api/live/categories")
+async def get_live_categories():
+    """Список категорий для Live Window"""
+    return [
+        "City Walk", "Nature", "Travel", "Fishing", "Sea & Beach", 
+        "Events", "Sports", "Weather", "Animals", "Culture", 
+        "Transportation", "Random", "Other"
+    ]
+
+@app.get("/api/live/rooms", response_model=list[LiveRoomInfo])
+async def get_live_rooms(category: Optional[str] = None, country: Optional[str] = None):
+    """Список публичных трансляций"""
+    rooms = await store.get_public_rooms(category=category, country=country)
+    return [
+        LiveRoomInfo(
+            token=r.token,
+            title=r.title or "Live Stream",
+            category=r.category or "Other",
+            participants=r.participants,
+            country=r.country,
+            city=r.city if r.location_level in ("city", "region") else None,
+            lat=r.lat if r.location_level == "region" else None,
+            lng=r.lng if r.location_level == "region" else None,
+            createdAt=r.created_at,
+            streamerPeerId=r.streamer_peer_id
+        ) for r in rooms
+    ]
+
+@app.get("/api/live/map")
+async def get_live_map():
+    """Данные для карты (GeoJSON-like)"""
+    rooms = await store.get_public_rooms()
+    features = []
+    for r in rooms:
+        if r.lat is not None and r.lng is not None:
+            features.append({
+                "type": "Feature",
+                "properties": {
+                    "token": r.token,
+                    "title": r.title,
+                    "category": r.category,
+                    "participants": r.participants
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [r.lng, r.lat]
+                }
+            })
+    return {"type": "FeatureCollection", "features": features}
+
+@app.post("/api/live/start", response_model=CreateRoomResponse)
+async def start_live(request: CreateLiveRoomRequest):
+    """Запуск публичной трансляции"""
+    # Публичные комнаты позволяют больше зрителей (до 50 для MVP)
+    room = await store.create_room(
+        max_participants=50,
+        is_public=True,
+        title=request.title,
+        category=request.category,
+        location_level=request.locationLevel,
+        country=request.country,
+        city=request.city,
+        lat=request.lat,
+        lng=request.lng,
+        chat_enabled=request.chatEnabled
+    )
+    
+    base_url = os.getenv("PUBLIC_BASE_URL", "https://talklink.space")
+    return CreateRoomResponse(
+        token=room.token,
+        url=f"{base_url}/live/{room.token}",
+        ttlSeconds=int(room.expires_at - room.created_at)
+    )
+
+@app.post("/api/live/report")
+async def report_live(token: str, reason: str):
+    """Жалоба на трансляцию"""
+    logger.warning(f"REPORT: Room {token} reported for: {reason}")
+    # В MVP просто логируем. В будущем — авто-бан при N жалобах.
+    return {"status": "reported"}
 
 # --- Security ---
 security = HTTPBasic()
@@ -871,7 +997,20 @@ async def catch_all(request: Request, path: str):
         raise HTTPException(status_code=404)
         
     subdomain = seo.get_subdomain(request.headers.get("host", ""))
-    metadata = seo.generate_metadata(subdomain, f"/{path}", request.headers.get("host", ""))
+    
+    # Live Window dynamic metadata
+    room_data = None
+    if path.startswith("live/"):
+        token = path.split("/")[-1]
+        room = await store.get_room(token)
+        if room and room.is_public:
+            room_data = {
+                "title": room.title,
+                "category": room.category,
+                "country": room.country
+            }
+            
+    metadata = seo.generate_metadata(subdomain, f"/{path}", request.headers.get("host", ""), room_data=room_data)
     
     # Path to index.html
     # In Docker: /usr/share/nginx/html/index.html
