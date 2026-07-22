@@ -30,11 +30,28 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
         title = f"TalkLink - {path.strip('/').replace('-', ' ').capitalize()}"
         description = f"Learn more about {path.strip('/').replace('-', ' ')} with TalkLink. Secure, instant video calls without registration."
 
+    # Normalize host: remove port and www
+    clean_host = host.split(":")[0].lower()
+    if clean_host.startswith("www."):
+        clean_host = clean_host[4:]
+    
+    # Normalize path: remove trailing slash for consistency (except root)
+    clean_path = path
+    if len(clean_path) > 1 and clean_path.endswith("/"):
+        clean_path = clean_path[:-1]
+
     # Use the actual host for canonical URL
     protocol = "https" # Assume https in production
-    canonical_url = f"{protocol}://{host}{path}"
+    canonical_url = f"{protocol}://{clean_host}{clean_path}"
 
+    # Set noindex for temporary pages (rooms, meetings)
+    # We only want to index main landing pages and blog posts
     noindex = False
+    static_paths = ["/", "/call", "/meet", "/online-video-calls", "/web-calls", "/video-meetings", "/video-call-link", "/blog"]
+    is_static = clean_path in static_paths or clean_path.startswith("/blog")
+    
+    if not is_static:
+        noindex = True
 
     return {
         "title": title,
@@ -280,8 +297,14 @@ def inject_metadata(html: str, metadata: Dict[str, Any], path: str = "/", host: 
         html = html.replace('</head>', f'    {json_ld_scripts}\n</head>')
     
     if metadata.get("noindex"):
-        # Если принудительно установлен noindex в метаданных (сейчас всегда False)
-        html = html.replace('<meta name="robots" content="index, follow" />',
-                            '<meta name="robots" content="noindex, nofollow" />')
+        # Если принудительно установлен noindex в метаданных
+        if '<meta name="robots"' in html:
+            html = re.sub(r'<meta name="robots" content=".*?" />',
+                          '<meta name="robots" content="noindex, nofollow" />', html)
+        else:
+            html = html.replace('</head>', '    <meta name="robots" content="noindex, nofollow" />\n</head>')
+    elif '<meta name="robots"' not in html:
+        # Если robots нет, добавляем дефолтный
+        html = html.replace('</head>', '    <meta name="robots" content="index, follow" />\n</head>')
 
     return html
