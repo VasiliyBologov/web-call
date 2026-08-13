@@ -212,6 +212,7 @@ export const Landing: React.FC = () => {
             {t('footer.copy')}
           </div>
           <div className="flex gap-6">
+            <a href="/privacy" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Privacy</a>
             {/*<a href="#" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Twitter</a>*/}
             <a href="https://github.com/VasiliyBologov/web-call" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">GitHub</a>
           </div>

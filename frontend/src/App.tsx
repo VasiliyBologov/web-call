@@ -8,6 +8,7 @@ const MeetRoom = lazy(() => import('./pages/MeetRoom').then(m => ({ default: m.M
 const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })))
 const SeoLanding = lazy(() => import('./pages/SeoLanding').then(m => ({ default: m.SeoLanding })))
 const BlogArticle = lazy(() => import('./pages/BlogArticle').then(m => ({ default: m.BlogArticle })))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })))
 
 function useRoute() {
   const path = window.location.pathname
@@ -22,8 +23,9 @@ function useRoute() {
   const isCall = path === '/call'
   const isMeet = path === '/meet'
   const isBlog = path === '/blog'
+  const isPrivacy = path === '/privacy'
   
-  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' = 'landing'
+  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' | 'privacy' = 'landing'
   let token: string | undefined = undefined
   let slug: string | undefined = undefined
 
@@ -47,6 +49,8 @@ function useRoute() {
     route = 'meet'
   } else if (isBlog) {
     route = 'blog'
+  } else if (isPrivacy) {
+    route = 'privacy'
   }
 
   return { route, token, slug } as const
@@ -72,6 +76,7 @@ export const App: React.FC = () => {
       {route === 'seo-landing' && slug && <SeoLanding slug={slug} />}
       {route === 'blog' && <BlogArticle />}
       {route === 'blog-article' && <BlogArticle slug={slug} />}
+      {route === 'privacy' && <PrivacyPolicy />}
     </Suspense>
   )
 }
