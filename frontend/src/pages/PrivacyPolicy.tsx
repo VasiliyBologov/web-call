@@ -1,6 +1,10 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
+import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
 export const PrivacyPolicy: React.FC = () => {
+  const { t } = useTranslation()
+
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 selection:bg-emerald-500/30 overflow-x-hidden relative font-sans">
       {/* Background Decorative Elements */}
@@ -16,61 +20,49 @@ export const PrivacyPolicy: React.FC = () => {
           </div>
           <span className="text-xl font-bold tracking-tight text-white">TalkLink</span>
         </a>
+        <LanguageSwitcher />
       </header>
 
       <main className="relative z-10 max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-4xl font-black mb-8 text-white tracking-tight">Политика конфиденциальности</h1>
+        <h1 className="text-4xl font-black mb-8 text-white tracking-tight">{t('privacy.title')}</h1>
         
         <div className="space-y-6 text-slate-400 leading-relaxed">
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">1. Общие положения</h2>
-            <p>
-              Данная политика конфиденциальности относится к приложению TalkLink (далее — Приложение). 
-              Приложение является проектом с открытым исходным кодом (Open Source) и предоставляется «как есть».
-              Разработка и поддержка Приложения осуществляется частным лицом, юридическое лицо отсутствует.
-            </p>
+            <h2 className="text-xl font-bold text-white mb-3">{t('privacy.section1.title')}</h2>
+            <p>{t('privacy.section1.content')}</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">2. Сбор и использование данных</h2>
-            <p>
-              Приложение TalkLink разработано с приоритетом на приватность:
-            </p>
+            <h2 className="text-xl font-bold text-white mb-3">{t('privacy.section2.title')}</h2>
+            <p>{t('privacy.section2.content')}</p>
             <ul className="list-disc ml-6 mt-2 space-y-2">
-              <li>Мы не собираем, не храним и не передаем персональные данные пользователей.</li>
-              <li>В приложении отсутствует система регистрации и личные кабинеты.</li>
-              <li>Мы не используем файлы cookie для отслеживания ваших действий.</li>
-              <li>Аудио- и видеовызовы осуществляются по технологии WebRTC, обеспечивающей передачу данных напрямую между участниками (Peer-to-Peer).</li>
+              <li>{t('privacy.section2.item1')}</li>
+              <li>{t('privacy.section2.item2')}</li>
+              <li>{t('privacy.section2.item3')}</li>
+              <li>{t('privacy.section2.item4')}</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">3. Права доступа</h2>
-            <p>
-              Для функционирования основных возможностей Приложению требуются следующие доступы:
-            </p>
+            <h2 className="text-xl font-bold text-white mb-3">{t('privacy.section3.title')}</h2>
+            <p>{t('privacy.section3.content')}</p>
             <ul className="list-disc ml-6 mt-2 space-y-2">
-              <li><strong>Камера и микрофон:</strong> Исключительно для осуществления видео- и аудиосвязи в реальном времени. Данные с камеры и микрофона не записываются и не сохраняются на серверах.</li>
+              <li>{t('privacy.section3.item1')}</li>
             </ul>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">4. Авторское право и лицензия</h2>
-            <p>
-              Исходный код приложения TalkLink находится в открытом доступе и защищен авторским правом. 
-              Условия использования, копирования и модификации кода определяются лицензией, указанной в репозитории проекта на GitHub.
-            </p>
+            <h2 className="text-xl font-bold text-white mb-3">{t('privacy.section4.title')}</h2>
+            <p>{t('privacy.section4.content')}</p>
           </section>
 
           <section>
-            <h2 className="text-xl font-bold text-white mb-3">5. Изменения политики</h2>
-            <p>
-              Данная политика может обновляться по мере развития Приложения. Рекомендуется периодически проверять эту страницу на наличие изменений.
-            </p>
+            <h2 className="text-xl font-bold text-white mb-3">{t('privacy.section5.title')}</h2>
+            <p>{t('privacy.section5.content')}</p>
           </section>
 
           <section className="pt-8 border-t border-white/10 text-sm">
-            <p>Дата последнего обновления: 13 августа 2026 г.</p>
+            <p>{t('privacy.lastUpdated')}</p>
             <p>
               GitHub: <a href="https://github.com/VasiliyBologov/web-call" className="text-blue-400 hover:underline">VasiliyBologov/web-call</a>
             </p>
@@ -81,7 +73,7 @@ export const PrivacyPolicy: React.FC = () => {
       <footer className="relative z-10 border-t border-white/5 py-12 px-6 mt-12">
         <div className="max-w-7xl mx-auto text-center">
           <a href="/" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">
-            Вернуться на главную
+            {t('privacy.backToHome')}
           </a>
         </div>
       </footer>

@@ -123,7 +123,25 @@ const resources = {
       "room.namePopup.subtitle": "Please enter your display name to join the meeting",
       "room.namePopup.placeholder": "Your Name",
       "room.namePopup.join": "Join Meeting",
-      "common.back": "Back"
+      "common.back": "Back",
+      "privacy.title": "Privacy Policy",
+      "privacy.lastUpdated": "Last updated: August 13, 2026",
+      "privacy.backToHome": "Back to Home",
+      "privacy.section1.title": "1. General Provisions",
+      "privacy.section1.content": "This privacy policy applies to the TalkLink application (hereinafter referred to as the Application). The Application is an open source project and is provided \"as is\". The development and maintenance of the Application is carried out by a private individual, there is no legal entity.",
+      "privacy.section2.title": "2. Data Collection and Use",
+      "privacy.section2.content": "The TalkLink application is developed with a priority on privacy:",
+      "privacy.section2.item1": "We do not collect, store, or transmit users' personal data.",
+      "privacy.section2.item2": "There is no registration system or personal accounts in the application.",
+      "privacy.section2.item3": "We do not use cookies to track your actions.",
+      "privacy.section2.item4": "Audio and video calls are carried out using WebRTC technology, which ensures data transfer directly between participants (Peer-to-Peer).",
+      "privacy.section3.title": "3. Access Rights",
+      "privacy.section3.content": "For the core features to function, the Application requires the following access:",
+      "privacy.section3.item1": "Camera and microphone: Exclusively for real-time video and audio communication. Data from the camera and microphone is not recorded or stored on servers.",
+      "privacy.section4.title": "4. Copyright and License",
+      "privacy.section4.content": "The source code of the TalkLink application is open source and protected by copyright. The terms of use, copying, and modification of the code are determined by the license specified in the project repository on GitHub.",
+      "privacy.section5.title": "5. Policy Changes",
+      "privacy.section5.content": "This policy may be updated as the Application develops. It is recommended to periodically check this page for changes."
     }
   },
   ru: {
@@ -245,7 +263,25 @@ const resources = {
       "room.namePopup.subtitle": "Пожалуйста, введите ваше имя для входа в конференцию",
       "room.namePopup.placeholder": "Ваше имя",
       "room.namePopup.join": "Войти в конференцию",
-      "common.back": "Вернуться"
+      "common.back": "Вернуться",
+      "privacy.title": "Политика конфиденциальности",
+      "privacy.lastUpdated": "Дата последнего обновления: 13 августа 2026 г.",
+      "privacy.backToHome": "Вернуться на главную",
+      "privacy.section1.title": "1. Общие положения",
+      "privacy.section1.content": "Данная политика конфиденциальности относится к приложению TalkLink (далее — Приложение). Приложение является проектом с открытым исходным кодом (Open Source) и предоставляется «как есть». Разработка и поддержка Приложения осуществляется частным лицом, юридическое лицо отсутствует.",
+      "privacy.section2.title": "2. Сбор и использование данных",
+      "privacy.section2.content": "Приложение TalkLink разработано с приоритетом на приватность:",
+      "privacy.section2.item1": "Мы не собираем, не храним и не передаем персональные данные пользователей.",
+      "privacy.section2.item2": "В приложении отсутствует система регистрации и личные кабинеты.",
+      "privacy.section2.item3": "Мы не используем файлы cookie для отслеживания ваших действий.",
+      "privacy.section2.item4": "Аудио- и видеовызовы осуществляются по технологии WebRTC, обеспечивающей передачу данных напрямую между участниками (Peer-to-Peer).",
+      "privacy.section3.title": "3. Права доступа",
+      "privacy.section3.content": "Для функционирования основных возможностей Приложению требуются следующие доступы:",
+      "privacy.section3.item1": "Камера и микрофон: Исключительно для осуществления видео- и аудиосвязи в реальном времени. Данные с камеры и микрофона не записываются и не сохраняются на серверах.",
+      "privacy.section4.title": "4. Авторское право и лицензия",
+      "privacy.section4.content": "Исходный код приложения TalkLink находится в открытом доступе и защищен авторским правом. Условия использования, копирования и модификации кода определяются лицензией, указанной в репозитории проекта на GitHub.",
+      "privacy.section5.title": "5. Изменения политики",
+      "privacy.section5.content": "Данная политика может обновляться по мере развития Приложения. Рекомендуется периодически проверять эту страницу на наличие изменений."
     }
   },
   ro: {
@@ -367,7 +403,25 @@ const resources = {
       "room.namePopup.subtitle": "Vă rugăm să introduceți numele de afișare pentru a vă alătura întâlnirii",
       "room.namePopup.placeholder": "Numele tău",
       "room.namePopup.join": "Alătură-te întâlnirii",
-      "common.back": "Înapoi"
+      "common.back": "Înapoi",
+      "privacy.title": "Politica de Confidențialitate",
+      "privacy.lastUpdated": "Ultima actualizare: 13 august 2026",
+      "privacy.backToHome": "Înapoi la pagina principală",
+      "privacy.section1.title": "1. Dispoziții Generale",
+      "privacy.section1.content": "Această politică de confidențialitate se aplică aplicației TalkLink (numită în continuare Aplicația). Aplicația este un proiect cu sursă deschisă și este furnizată „ca atare”. Dezvoltarea și întreținerea Aplicației sunt realizate de o persoană fizică, nu există o persoană juridică.",
+      "privacy.section2.title": "2. Colectarea și Utilizarea Datelor",
+      "privacy.section2.content": "Aplicația TalkLink este dezvoltată cu prioritate pe confidențialitate:",
+      "privacy.section2.item1": "Nu colectăm, nu stocăm și nu transmitem datele personale ale utilizatorilor.",
+      "privacy.section2.item2": "În aplicație nu există un sistem de înregistrare sau conturi personale.",
+      "privacy.section2.item3": "Nu folosim module cookie pentru a vă urmări acțiunile.",
+      "privacy.section2.item4": "Apelurile audio și video sunt realizate folosind tehnologia WebRTC, care asigură transferul de date direct între participanți (Peer-to-Peer).",
+      "privacy.section3.title": "3. Drepturi de Acces",
+      "privacy.section3.content": "Pentru ca funcțiile de bază să funcționeze, Aplicația necesită următorul acces:",
+      "privacy.section3.item1": "Camera și microfonul: Exclusiv pentru comunicarea video și audio în timp real. Datele de la cameră și microfon nu sunt înregistrate sau stocate pe servere.",
+      "privacy.section4.title": "4. Drepturi de Autor și Licență",
+      "privacy.section4.content": "Codul sursă al aplicației TalkLink este cu sursă deschisă și protejat de drepturi de autor. Condițiile de utilizare, copiere și modificare a codului sunt determinate de licența specificată în depozitul proiectului de pe GitHub.",
+      "privacy.section5.title": "5. Modificări ale Politicii",
+      "privacy.section5.content": "Această politică poate fi actualizată pe măsură ce Aplicația se dezvoltă. Se recomandă verificarea periodică a acestei pagini pentru modificări."
     }
   }
 }
