@@ -5,9 +5,9 @@
     ],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.talklink",
+      "package_name": "talk.link.space",
       "sha256_cert_fingerprints": [
-        "<YOUR_SHA256_FINGERPRINT>"
+        "E2:11:47:84:7B:47:FB:AB:A2:04:2D:98:4F:3D:F5:2A:E5:E7:6C:0B:13:EB:B8:20:BA:22:39:D9:F2:71:90:5F"
       ]
     }
   }

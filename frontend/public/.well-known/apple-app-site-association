@@ -2,7 +2,9 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["<YOUR_TEAM_ID>.org.reactjs.native.example.TalkLink"],
+        "appIDs": ["3BBFZMB75R.talk.link.space"],
+        "appID": "3BBFZMB75R.talk.link.space",
+        "paths": ["/r/*"],
         "components": [
           {
             "/": "/r/*"

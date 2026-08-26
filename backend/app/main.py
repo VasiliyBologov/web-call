@@ -867,7 +867,7 @@ async def sitemap_xml(request: Request):
 @app.get("/{path:path}", response_class=HTMLResponse)
 async def catch_all(request: Request, path: str):
     # Ignore API and static files
-    if path.startswith("api/") or path.startswith("ws/") or "." in path:
+    if path.startswith("api/") or path.startswith("ws/") or "." in path or path.startswith(".well-known/"):
         raise HTTPException(status_code=404)
         
     subdomain = seo.get_subdomain(request.headers.get("host", ""))
