@@ -6,6 +6,7 @@ import {
   GOOGLE_PLAY_URL,
   detectMobilePlatform,
   getStoreUrl,
+  isCrawlerUserAgent,
 } from '../storeLinks'
 
 const AppleIcon = () => (
@@ -59,6 +60,9 @@ export const Download: React.FC = () => {
   const { t } = useTranslation()
 
   useEffect(() => {
+    // Search engines must see the download landing page instead of being sent to a store.
+    if (isCrawlerUserAgent(navigator.userAgent)) return
+
     const platform = detectMobilePlatform(navigator.userAgent, navigator.maxTouchPoints)
     const storeUrl = getStoreUrl(platform)
     if (storeUrl) window.location.replace(storeUrl)

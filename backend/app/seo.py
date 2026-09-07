@@ -26,6 +26,9 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     elif path == "/" or path == "":
         title = "TalkLink - Online Video Calls and Web Meetings in Your Browser"
         description = "Create secure online video calls and web meetings instantly. No downloads, no registration. Share a link and start talking."
+    elif path.rstrip("/") == "/download":
+        title = "Download TalkLink for iOS and Android"
+        description = "Download the TalkLink mobile app from the App Store or Google Play for private video calls and meetings."
     else:
         title = f"TalkLink - {path.strip('/').replace('-', ' ').capitalize()}"
         description = f"Learn more about {path.strip('/').replace('-', ' ')} with TalkLink. Secure, instant video calls without registration."
@@ -47,7 +50,7 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     # Set noindex for temporary pages (rooms, meetings)
     # We only want to index main landing pages and blog posts
     noindex = False
-    static_paths = ["/", "/call", "/meet", "/online-video-calls", "/web-calls", "/video-meetings", "/video-call-link", "/blog"]
+    static_paths = ["/", "/call", "/meet", "/download", "/online-video-calls", "/web-calls", "/video-meetings", "/video-call-link", "/blog"]
     is_static = clean_path in static_paths or clean_path.startswith("/blog")
     
     if not is_static:
@@ -69,6 +72,7 @@ def get_robots_txt(subdomain: str, host: str) -> str:
     protocol = "https"
     return f"""User-agent: *
 Allow: /
+Allow: /download
 Disallow: /api/
 Disallow: /admin/
 Disallow: /cabinet/
@@ -110,6 +114,7 @@ def get_sitemap_xml(subdomain: str, host: str) -> str:
         {"path": "/", "priority": "1.0", "changefreq": "daily"},
         {"path": "/call", "priority": "0.8", "changefreq": "weekly"},
         {"path": "/meet", "priority": "0.8", "changefreq": "weekly"},
+        {"path": "/download", "priority": "0.9", "changefreq": "monthly"},
         {"path": "/online-video-calls", "priority": "0.9", "changefreq": "monthly"},
         {"path": "/web-calls", "priority": "0.9", "changefreq": "monthly"},
         {"path": "/video-meetings", "priority": "0.9", "changefreq": "monthly"},

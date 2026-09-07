@@ -4,6 +4,7 @@ import {
   GOOGLE_PLAY_URL,
   detectMobilePlatform,
   getStoreUrl,
+  isCrawlerUserAgent,
 } from '../storeLinks'
 
 describe('mobile store link detection', () => {
@@ -36,5 +37,12 @@ describe('mobile store link detection', () => {
 
     expect(platform).toBe('other')
     expect(getStoreUrl(platform)).toBeNull()
+  })
+
+  it('recognizes Google smartphone crawler before redirecting it', () => {
+    const googlebot = 'Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 Chrome/131 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+    expect(detectMobilePlatform(googlebot)).toBe('android')
+    expect(isCrawlerUserAgent(googlebot)).toBe(true)
   })
 })

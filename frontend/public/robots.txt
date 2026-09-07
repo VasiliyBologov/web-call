@@ -1,6 +1,7 @@
 # robots.txt for https://talklink.space/
 User-agent: *
 Allow: /
+Allow: /download
 Disallow: /api/
 Disallow: /admin/
 Disallow: /cabinet/

@@ -3,6 +3,10 @@ export const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=ta
 
 export type MobilePlatform = 'ios' | 'android' | 'other'
 
+export function isCrawlerUserAgent(userAgent: string): boolean {
+  return /bot|crawler|spider|crawling|slurp/i.test(userAgent)
+}
+
 export function detectMobilePlatform(
   userAgent: string,
   maxTouchPoints = 0,
