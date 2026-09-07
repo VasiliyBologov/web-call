@@ -9,6 +9,7 @@ const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin }
 const SeoLanding = lazy(() => import('./pages/SeoLanding').then(m => ({ default: m.SeoLanding })))
 const BlogArticle = lazy(() => import('./pages/BlogArticle').then(m => ({ default: m.BlogArticle })))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })))
+const Download = lazy(() => import('./pages/Download').then(m => ({ default: m.Download })))
 
 function useRoute() {
   const path = window.location.pathname
@@ -24,8 +25,9 @@ function useRoute() {
   const isMeet = path === '/meet'
   const isBlog = path === '/blog'
   const isPrivacy = path === '/privacy'
+  const isDownload = path === '/download'
   
-  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' | 'privacy' = 'landing'
+  let route: 'room' | 'meet-room' | 'admin' | 'call' | 'meet' | 'landing' | 'seo-landing' | 'blog' | 'blog-article' | 'privacy' | 'download' = 'landing'
   let token: string | undefined = undefined
   let slug: string | undefined = undefined
 
@@ -51,6 +53,8 @@ function useRoute() {
     route = 'blog'
   } else if (isPrivacy) {
     route = 'privacy'
+  } else if (isDownload) {
+    route = 'download'
   }
 
   return { route, token, slug } as const
@@ -77,6 +81,7 @@ export const App: React.FC = () => {
       {route === 'blog' && <BlogArticle />}
       {route === 'blog-article' && <BlogArticle slug={slug} />}
       {route === 'privacy' && <PrivacyPolicy />}
+      {route === 'download' && <Download />}
     </Suspense>
   )
 }

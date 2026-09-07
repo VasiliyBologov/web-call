@@ -1,6 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import { AppStoreButton, GooglePlayButton } from './Download'
 
 export const Landing: React.FC = () => {
   const { t } = useTranslation()
@@ -97,6 +98,22 @@ export const Landing: React.FC = () => {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 group-hover:translate-x-1 transition-transform opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
+          </a>
+        </div>
+
+        <div className="mt-12 flex flex-col items-center">
+          <p className="mb-5 text-sm font-bold uppercase tracking-[0.18em] text-slate-500">
+            {t('download.available')}
+          </p>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <AppStoreButton />
+            <GooglePlayButton />
+          </div>
+          <a
+            href="/download"
+            className="mt-5 text-sm font-semibold text-blue-400 underline decoration-blue-400/40 underline-offset-4 transition-colors hover:text-blue-300"
+          >
+            {t('download.smartLink')}
           </a>
         </div>
 
