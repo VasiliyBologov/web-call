@@ -44,7 +44,7 @@ const BLOG_ARTICLES: Record<string, any> = {
     content: 'We list the best free tools for video calls in 2026. Focus on privacy, ease of use, and no-registration features.'
   },
   'changelog-last-3-months': {
-    title: 'Обновления TalkLink: Что нового за последние 3 месяца',
+    title: 'Обновления TalkLink: март–июнь 2026',
     content: (
       <div className="space-y-8">
         <p>

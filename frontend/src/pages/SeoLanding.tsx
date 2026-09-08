@@ -2,22 +2,77 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
-const SEO_PAGES: Record<string, any> = {
+type SeoPage = {
+  title: string
+  intro: string
+  sections: Array<{ title: string; body: string }>
+  useCases: string[]
+}
+
+const SEO_PAGES: Record<string, SeoPage> = {
   'online-video-calls': {
     title: 'Online Video Calls',
-    content: 'Long SEO content about online video calls...'
+    intro: 'Start an online video call from a modern browser without creating an account or asking participants to install another app. TalkLink creates a private room that you can open from desktop or mobile devices.',
+    sections: [
+      {
+        title: 'Start a call in a few steps',
+        body: 'Choose a private call or group meeting, create a unique room link, and share it with the people you want to invite. Each participant opens the link and grants camera and microphone permission before joining.'
+      },
+      {
+        title: 'Built for quick conversations',
+        body: 'Removing account creation and installation makes TalkLink useful when a conversation needs to start quickly. A current browser, a stable internet connection, and a camera or microphone are all you need.'
+      }
+    ],
+    useCases: ['Remote team check-ins', 'Client and freelance consultations', 'Calls with friends and family', 'Quick one-to-one conversations']
   },
   'web-calls': {
-    title: 'Web Calls',
-    content: 'Long SEO content about web calls...'
+    title: 'Browser Web Calls Without Downloads',
+    intro: 'TalkLink lets you start a private video call directly in a modern web browser. There is no account to create and no application to install: create a room, share its unique link, and connect in seconds.',
+    sections: [
+      {
+        title: 'How to start a web call',
+        body: 'Open TalkLink and choose a video call or group meeting. Create a private room link, send it only to the people you want to invite, then allow camera and microphone access when you are ready to join.'
+      },
+      {
+        title: 'Why make calls in the browser?',
+        body: 'Browser-based calls remove installation and sign-up steps, which makes them useful for quick conversations with clients, friends, family, and remote teams. TalkLink uses WebRTC for real-time audio and video and encrypts media in transit.'
+      },
+      {
+        title: 'What you need',
+        body: 'Use a current browser and a stable internet connection. Headphones can reduce echo in noisy rooms. Participants can join from desktop or mobile devices without creating a TalkLink account.'
+      }
+    ],
+    useCases: ['Instant calls with no registration', 'Cross-device browser meetings', 'Private links for invited participants', 'Audio and video protected in transit']
   },
   'video-meetings': {
     title: 'Video Meetings',
-    content: 'Long SEO content about video meetings...'
+    intro: 'Create a browser-based video meeting and invite participants with one link. TalkLink keeps the joining process short, so a team or group can move from invitation to conversation without account setup.',
+    sections: [
+      {
+        title: 'A simple meeting workflow',
+        body: 'Create a meeting room, copy its unique URL, and send it through the channel your group already uses. Participants can check their camera and microphone in the browser before entering the meeting.'
+      },
+      {
+        title: 'Useful for distributed groups',
+        body: 'A link-based meeting works well for remote teams, project discussions, interviews, and informal group calls. Because TalkLink runs in the browser, guests can join from different devices without installing dedicated meeting software.'
+      }
+    ],
+    useCases: ['Remote team meetings', 'Project discussions', 'Online interviews', 'Small group conversations']
   },
   'video-call-link': {
     title: 'Video Call by Link',
-    content: 'Long SEO content about video call links...'
+    intro: 'Create a unique video call link and share it with the person or group you want to reach. The link opens a TalkLink room in the browser, making it easy for guests to join without registration.',
+    sections: [
+      {
+        title: 'Create and share your room',
+        body: 'Start from the TalkLink call page, generate a room, and copy the URL. Treat the room link like an invitation: share it directly with intended participants and avoid posting private links publicly.'
+      },
+      {
+        title: 'Join from desktop or mobile',
+        body: 'Guests can open the same link on a supported desktop or mobile browser. After granting camera and microphone access, they can join the conversation without remembering a meeting code or creating an account.'
+      }
+    ],
+    useCases: ['One-click invitations', 'No meeting codes to enter', 'Desktop and mobile access', 'No TalkLink account required']
   }
 }
 
@@ -64,8 +119,14 @@ export const SeoLanding: React.FC<{ slug: string }> = ({ slug }) => {
           {page.title}
         </h1>
         <div className="prose prose-invert prose-lg max-w-none text-slate-400 leading-relaxed">
-          <p>{page.content}</p>
-          <p>TalkLink allows you to create secure {page.title.toLowerCase()} instantly. No downloads, no registration.</p>
+          <p>{page.intro}</p>
+
+          {page.sections.map((section) => (
+            <section key={section.title} className="mt-12">
+              <h2 className="text-2xl font-bold text-white mb-4">{section.title}</h2>
+              <p>{section.body}</p>
+            </section>
+          ))}
           
           <div className="my-12 p-8 bg-blue-600/10 border border-blue-500/20 rounded-3xl text-center">
             <h2 className="text-2xl font-bold text-white mb-4">Ready to start?</h2>
@@ -74,12 +135,9 @@ export const SeoLanding: React.FC<{ slug: string }> = ({ slug }) => {
             </a>
           </div>
 
-          <h2 className="text-2xl font-bold text-white mt-12 mb-6">Why use TalkLink for {page.title.toLowerCase()}?</h2>
+          <h2 className="text-2xl font-bold text-white mt-12 mb-6">When to use TalkLink</h2>
           <ul className="list-disc pl-6 space-y-4">
-            <li>No registration or software installation required</li>
-            <li>End-to-end encryption for maximum privacy</li>
-            <li>High-quality audio and video via WebRTC</li>
-            <li>Works on all devices: desktop and mobile</li>
+            {page.useCases.map((useCase) => <li key={useCase}>{useCase}</li>)}
           </ul>
 
           <div className="mt-20 pt-20 border-t border-white/5">
