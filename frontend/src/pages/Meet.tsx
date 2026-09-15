@@ -3,9 +3,10 @@ import { api } from '../config'
 import QRCode from 'qrcode'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import { getAnalyticsPath, getSafeServerCode, trackEvent } from '../analytics'
 
 export const Meet: React.FC = () => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [roomUrl, setRoomUrl] = useState<string | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const base = useMemo(() => window.location.origin, [])
@@ -17,31 +18,58 @@ export const Meet: React.FC = () => {
   async function createMeet() {
     setRoomUrl(null)
     setQrDataUrl(null)
-    const res = await fetch(api('/api/meet'), { method: 'POST' })
-    if (!res.ok) {
-      alert(t('room.error.create.title'))
-      return
-    }
-    const data = await res.json()
-    const url = data.url.startsWith('http') ? data.url : `${base}${data.url}`
-    setRoomUrl(url)
-    const qr = await QRCode.toDataURL(url, { 
-      margin: 2, 
-      scale: 10,
-      color: {
-        dark: '#0f172a',
-        light: '#ffffff'
-      }
+    trackEvent('landing_cta_click', {
+      cta_name: 'generate_group_link',
+      landing_page: getAnalyticsPath(),
+      language: i18n.resolvedLanguage || i18n.language,
     })
-    setQrDataUrl(qr)
+
+    try {
+      const res = await fetch(api('/api/meet'), { method: 'POST' })
+      if (!res.ok) {
+        trackEvent('call_failed', {
+          room_type: 'group',
+          failure_stage: 'room_creation',
+          error_code: `http_${res.status}`,
+        })
+        alert(t('room.error.create.title'))
+        return
+      }
+      const data = await res.json()
+      const url = data.url.startsWith('http') ? data.url : `${base}${data.url}`
+      setRoomUrl(url)
+      trackEvent('room_created', {
+        room_type: 'group',
+        landing_page: getAnalyticsPath(),
+        language: i18n.resolvedLanguage || i18n.language,
+      })
+      const qr = await QRCode.toDataURL(url, {
+        margin: 2,
+        scale: 10,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        }
+      })
+      setQrDataUrl(qr)
+    } catch (error) {
+      trackEvent('call_failed', {
+        room_type: 'group',
+        failure_stage: 'room_creation',
+        error_code: getSafeServerCode(error instanceof Error ? error.name : 'request_failed'),
+      })
+      alert(t('room.error.create.title'))
+    }
   }
 
   async function shareLink(url: string) {
     try {
       if (navigator.share) {
         await navigator.share({ title: t('call.share'), text: t('call.share'), url })
+        trackEvent('link_shared', { room_type: 'group', share_method: 'native_share' })
       } else {
         await navigator.clipboard.writeText(url)
+        trackEvent('link_shared', { room_type: 'group', share_method: 'clipboard' })
         alert(t('call.copied'))
       }
     } catch (e) {
@@ -122,9 +150,10 @@ export const Meet: React.FC = () => {
                       <div className="absolute inset-0 rounded-2xl bg-blue-500/5 opacity-0 group-hover/input:opacity-100 pointer-events-none transition-opacity"></div>
                     </div>
                     <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(roomUrl);
-                        alert(t('call.copied'));
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(roomUrl)
+                        trackEvent('link_shared', { room_type: 'group', share_method: 'clipboard' })
+                        alert(t('call.copied'))
                       }}
                       className="bg-white text-slate-900 hover:bg-slate-100 px-8 py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95 whitespace-nowrap"
                     >

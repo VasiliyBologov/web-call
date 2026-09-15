@@ -94,3 +94,12 @@ def test_russian_changelog_sets_document_language_and_social_locale():
 
     assert '<html lang="ru">' in rendered
     assert '<meta property="og:locale" content="ru_RU" />' in rendered
+
+
+def test_homepage_schema_uses_legal_operator_and_store_profiles():
+    json_ld = seo.generate_json_ld("", "/", "talklink.space", "TalkLink")
+
+    assert '"name": "TASKMASTER, SRL"' in json_ld
+    assert '"alternateName": "TalkLink"' in json_ld
+    assert "https://play.google.com/store/apps/details?id=talk.link.space" in json_ld
+    assert "https://apps.apple.com/app/talklinkspace/id6805110249" in json_ld

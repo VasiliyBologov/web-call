@@ -259,9 +259,17 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
         schemas.append({
             "@context": "https://schema.org",
             "@type": "Organization",
-            "name": "TalkLink",
+            "name": "TASKMASTER, SRL",
+            "legalName": "TASKMASTER, SRL",
+            "alternateName": "TalkLink",
             "url": f"{base_url}/",
-            "logo": f"{base_url}/logo.png"
+            "logo": f"{base_url}/logo.png",
+            "email": "vasiliybologov@gmail.com",
+            "sameAs": [
+                "https://github.com/VasiliyBologov/web-call",
+                "https://play.google.com/store/apps/details?id=talk.link.space",
+                "https://apps.apple.com/app/talklinkspace/id6805110249",
+            ],
         })
         schemas.append({
             "@context": "https://schema.org",
@@ -274,7 +282,8 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
                 "@type": "Offer",
                 "price": "0",
                 "priceCurrency": "USD"
-            }
+            },
+            "provider": {"@type": "Organization", "name": "TASKMASTER, SRL"},
         })
         schemas.append({
             "@context": "https://schema.org",
@@ -317,8 +326,8 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
             "description": page_metadata.get("description", "TalkLink product news and guides."),
             "url": f"{base_url}{path}",
             "mainEntityOfPage": f"{base_url}{path}",
-            "author": {"@type": "Organization", "name": "TalkLink"},
-            "publisher": {"@type": "Organization", "name": "TalkLink"},
+            "author": {"@type": "Organization", "name": "TASKMASTER, SRL"},
+            "publisher": {"@type": "Organization", "name": "TASKMASTER, SRL"},
             "datePublished": "2026-06-09",
             "dateModified": "2026-09-08" if path == "/blog/changelog-last-3-months" else "2026-06-09",
         })

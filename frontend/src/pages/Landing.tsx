@@ -2,9 +2,18 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
 import { AppStoreButton, GooglePlayButton } from './Download'
+import { getAnalyticsPath, trackEvent } from '../analytics'
 
 export const Landing: React.FC = () => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+
+  const trackCta = (ctaName: string) => {
+    trackEvent('landing_cta_click', {
+      cta_name: ctaName,
+      landing_page: getAnalyticsPath(),
+      language: i18n.resolvedLanguage || i18n.language,
+    })
+  }
 
   const faqIndices = Array.from({ length: 12 }, (_, i) => i + 1)
   const faqSchema = {
@@ -47,12 +56,14 @@ export const Landing: React.FC = () => {
           <LanguageSwitcher />
           <a 
             href="/meet" 
+            onClick={() => trackCta('header_group_meeting')}
             className="text-slate-400 hover:text-white transition-colors text-xs uppercase tracking-widest hidden lg:block"
           >
             {t('nav.startMeet')}
           </a>
           <a 
             href="/call" 
+            onClick={() => trackCta('header_private_call')}
             className="bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md text-white px-5 py-2 rounded-xl text-sm font-semibold transition-all hover:border-white/20"
           >
             {t('nav.startCall')}
@@ -83,6 +94,7 @@ export const Landing: React.FC = () => {
         <div className="flex flex-col sm:flex-row gap-5 items-center">
           <a 
             href="/call" 
+            onClick={() => trackCta('hero_private_call')}
             className="group bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl text-lg font-bold shadow-2xl shadow-blue-600/30 transition-all hover:-translate-y-1 flex items-center gap-3 active:scale-95"
           >
             {t('hero.cta')}
@@ -92,6 +104,7 @@ export const Landing: React.FC = () => {
           </a>
           <a 
             href="/meet" 
+            onClick={() => trackCta('hero_group_meeting')}
             className="group bg-white/5 hover:bg-white/10 border border-white/10 text-white px-8 py-4 rounded-2xl text-lg font-bold transition-all hover:-translate-y-1 flex items-center gap-3 active:scale-95"
           >
             {t('nav.startMeet')}

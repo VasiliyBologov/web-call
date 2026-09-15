@@ -13,6 +13,14 @@ import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import {
+  AnalyticsConnectionType,
+  detectConnectionType,
+  getDeviceCategory,
+  getSafeErrorCode,
+  getSafeServerCode,
+  trackEvent,
+} from '../analytics'
 
 interface MeetRoomProps {
   token: string
@@ -76,9 +84,75 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const peerIdRef = useRef<string>(Math.random().toString(36).substring(2, 15))
   const peersRef = useRef<Map<string, RemotePeer>>(new Map())
   const localStreamRef = useRef<MediaStream | null>(null)
+  const guestJoinedTrackedRef = useRef(false)
+  const callConnectedTrackedRef = useRef(false)
+  const call60TrackedRef = useRef(false)
+  const call60TimerRef = useRef<number | null>(null)
+  const connectionTypeRef = useRef<AnalyticsConnectionType>('unknown')
+  const connectedPeerIdsRef = useRef<Set<string>>(new Set())
+  const remoteTrackPeerIdsRef = useRef<Set<string>>(new Set())
+  const trackedFailureKeysRef = useRef<Set<string>>(new Set())
   
   // Refs for signaling to avoid stale closures
   const handleSignalingRef = useRef<(msg: any) => Promise<void>>()
+
+  const trackGuestJoined = useCallback(() => {
+    if (guestJoinedTrackedRef.current) return
+    guestJoinedTrackedRef.current = true
+    trackEvent('guest_joined', {
+      room_type: 'group',
+      device_category: getDeviceCategory(),
+    })
+  }, [])
+
+  const clearCall60Timer = useCallback(() => {
+    if (call60TimerRef.current) {
+      window.clearTimeout(call60TimerRef.current)
+      call60TimerRef.current = null
+    }
+  }, [])
+
+  const scheduleCall60 = useCallback(() => {
+    if (call60TrackedRef.current || call60TimerRef.current) return
+    call60TimerRef.current = window.setTimeout(() => {
+      call60TimerRef.current = null
+      if (connectedPeerIdsRef.current.size === 0) return
+      call60TrackedRef.current = true
+      trackEvent('call_60s', {
+        room_type: 'group',
+        connection_type: connectionTypeRef.current,
+      })
+    }, 60_000)
+  }, [])
+
+  const trackConnectedCall = useCallback((pc: RTCPeerConnection, remotePeerId: string) => {
+    const state = pc.iceConnectionState
+    if (!remoteTrackPeerIdsRef.current.has(remotePeerId) || (state !== 'connected' && state !== 'completed')) return
+    connectedPeerIdsRef.current.add(remotePeerId)
+    scheduleCall60()
+    if (callConnectedTrackedRef.current) return
+    callConnectedTrackedRef.current = true
+
+    void detectConnectionType(pc).then(connectionType => {
+      connectionTypeRef.current = connectionType
+      trackEvent('call_connected', {
+        room_type: 'group',
+        connection_type: connectionType,
+      })
+    })
+  }, [scheduleCall60])
+
+  const trackCallFailure = useCallback((failureStage: string, errorCode: string) => {
+    const safeCode = getSafeServerCode(errorCode)
+    const key = `${failureStage}:${safeCode}`
+    if (trackedFailureKeysRef.current.has(key)) return
+    trackedFailureKeysRef.current.add(key)
+    trackEvent('call_failed', {
+      room_type: 'group',
+      failure_stage: failureStage,
+      error_code: safeCode,
+    })
+  }, [])
 
   // Timer logic
   useEffect(() => {
@@ -139,6 +213,8 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
     pc.ontrack = (event) => {
       const [stream] = event.streams
       console.log(`Received remote track from ${remotePeerId}: ${event.track.kind}`)
+      remoteTrackPeerIdsRef.current.add(remotePeerId)
+      trackConnectedCall(pc, remotePeerId)
       const peer = peersRef.current.get(remotePeerId)
       if (peer) {
         // Use the existing stream or the new one
@@ -152,6 +228,20 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
         // Update peer object with the stream (creating a new object to trigger React update)
         peersRef.current.set(remotePeerId, { ...peer, stream: remoteStream })
         setRemotePeers(new Map(peersRef.current))
+      }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      const state = pc.iceConnectionState
+      if (state === 'connected' || state === 'completed') {
+        trackConnectedCall(pc, remotePeerId)
+      } else if (state === 'disconnected' || state === 'closed') {
+        connectedPeerIdsRef.current.delete(remotePeerId)
+        if (connectedPeerIdsRef.current.size === 0) clearCall60Timer()
+      } else if (state === 'failed') {
+        connectedPeerIdsRef.current.delete(remotePeerId)
+        if (connectedPeerIdsRef.current.size === 0) clearCall60Timer()
+        trackCallFailure('ice', 'ice_failed')
       }
     }
 
@@ -181,13 +271,14 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
     }
 
     return { pc, polite, makingOffer: () => makingOffer, ignoreOffer: () => ignoreOffer, setIgnoreOffer: (v: boolean) => { ignoreOffer = v } }
-  }, [send])
+  }, [clearCall60Timer, send, trackCallFailure, trackConnectedCall])
 
   const handleSignaling = useCallback(async (msg: any) => {
     const { type, peerId: senderId, name: senderName, sdp, candidate, peers: others } = msg
 
     if (type === 'room-info') {
       setStatus('online')
+      if (Array.isArray(others) && others.length > 0) trackGuestJoined()
       for (const other of others) {
         const otherId = other.peerId
         const otherName = other.name
@@ -199,6 +290,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
       }
       setRemotePeers(new Map(peersRef.current))
     } else if (type === 'peer-joined') {
+      trackGuestJoined()
       if (!peersRef.current.has(senderId)) {
         const polite = peerIdRef.current < senderId
         const pcData = createPeerConnection(senderId, polite)
@@ -251,6 +343,9 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
         }
       }
     } else if (type === 'peer-left') {
+      connectedPeerIdsRef.current.delete(senderId)
+      remoteTrackPeerIdsRef.current.delete(senderId)
+      if (connectedPeerIdsRef.current.size === 0) clearCall60Timer()
       const peer = peersRef.current.get(senderId)
       if (peer) {
         peer.pc.close()
@@ -258,9 +353,10 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
         setRemotePeers(new Map(peersRef.current))
       }
     } else if (type === 'error' && msg.code === 'expired') {
+      trackCallFailure('signaling', msg.code)
       setStatus('expired')
     }
-  }, [createPeerConnection, send])
+  }, [clearCall60Timer, createPeerConnection, send, trackCallFailure, trackGuestJoined])
 
   handleSignalingRef.current = handleSignaling
 
@@ -303,18 +399,20 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
       ws.onclose = () => setStatus('disconnected')
     } catch (err) {
       console.error('Init failed', err)
+      trackCallFailure('initialization', getSafeErrorCode(err))
       setStatus('error')
     }
-  }, [token, userName])
+  }, [token, trackCallFailure, userName])
 
   useEffect(() => {
     return () => {
+      clearCall60Timer()
       wsRef.current?.close()
       localStreamRef.current?.getTracks().forEach(t => t.stop())
       screenStreamRef.current?.getTracks().forEach(t => t.stop())
       peersRef.current.forEach(p => p.pc.close())
     }
-  }, [])
+  }, [clearCall60Timer])
 
   const toggleMic = () => {
     if (localStreamRef.current) {
@@ -465,8 +563,12 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   const openSettings = (e: React.MouseEvent<HTMLElement>) => setSettingsAnchor(e.currentTarget)
   const closeSettings = () => setSettingsAnchor(null)
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href)
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(window.location.href)
+    trackEvent('link_shared', {
+      room_type: 'group',
+      share_method: 'clipboard',
+    })
     alert(t('call.copied'))
   }
 

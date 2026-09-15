@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 import time
@@ -32,6 +33,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("webcall")
 
+
+def _log_ref(value: Optional[str]) -> str:
+    """Return a stable, non-reversible log reference instead of a room or peer ID."""
+    if not value:
+        return "none"
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
 store = RoomStore()
 
 async def cleanup_loop():
@@ -42,7 +50,7 @@ async def cleanup_loop():
             expired_tokens = await store.cleanup()
             for token in expired_tokens:
                 if token in connections:
-                    logger.info(f"Closing connections for expired room: {token}")
+                    logger.info(f"Closing connections for expired room_ref={_log_ref(token)}")
                     peers = connections.pop(token, {})
                     for peer_id, ws in peers.items():
                         try:
@@ -55,11 +63,11 @@ async def cleanup_loop():
                                 }))
                                 await ws.close(code=4000, reason="Meeting expired")
                         except Exception as e:
-                            logger.warning(f"Error closing ws for expired room {token}: {e}")
+                            logger.warning(f"Error closing ws for expired room_ref={_log_ref(token)}: {type(e).__name__}")
         except asyncio.CancelledError:
             break
         except Exception as e:
-            logger.error(f"Error in cleanup_loop: {e}")
+            logger.error(f"Error in cleanup_loop: {type(e).__name__}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,7 +85,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Lifespan: Task was cancelled during runtime")
         raise
     except Exception as e:
-        logger.error(f"Lifespan: Critical error occurred: {e}", exc_info=True)
+        logger.error(f"Lifespan: Critical error occurred: {type(e).__name__}")
         raise
     finally:
         # Shutdown logic
@@ -102,7 +110,10 @@ async def lifespan(app: FastAPI):
                         await ws.close(code=1001, reason="Server shutdown")
                         closed_count += 1
                 except Exception as e:
-                    logger.warning(f"Lifespan: Error closing WebSocket for {token}/{peer_id}: {e}")
+                    logger.warning(
+                        f"Lifespan: Error closing WebSocket for room_ref={_log_ref(token)} "
+                        f"peer_ref={_log_ref(peer_id)}: {type(e).__name__}"
+                    )
         
         if closed_count > 0:
             logger.info(f"Lifespan: Closed {closed_count} active WebSocket connections")
@@ -150,12 +161,12 @@ async def health():
             }
         }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Health check failed: {type(e).__name__}")
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
                 "status": "unhealthy",
-                "error": str(e),
+                "error": "Health check failed",
                 "timestamp": datetime.utcnow().isoformat()
             }
         )
@@ -178,12 +189,12 @@ async def debug_info():
             "connections": {
                 "active_rooms": len(connections),
                 "total_peers": sum(len(peers) for peers in connections.values()),
-                "room_tokens": list(connections.keys())
+                "room_tokens_exposed": False
             }
         }
     except Exception as e:
-        logger.error(f"Debug info failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Debug info unavailable: {str(e)}")
+        logger.error(f"Debug info failed: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Debug info unavailable")
 
 @app.post("/api/rooms", response_model=CreateRoomResponse)
 async def create_room(request: Request):
@@ -198,7 +209,7 @@ async def create_room(request: Request):
         url_path = f"/r/{room.token}"
         url = f"{base_url}{url_path}"
         
-        logger.info(f"Room created: {room.token}, max_participants: {room.max_participants}")
+        logger.info(f"Room created: room_ref={_log_ref(room.token)}, max_participants={room.max_participants}")
         
         return CreateRoomResponse(
             token=room.token, 
@@ -206,10 +217,10 @@ async def create_room(request: Request):
             ttlSeconds=int(room.expires_at - room.created_at)
         )
     except Exception as e:
-        logger.error(f"Failed to create room: {e}")
+        logger.error(f"Failed to create room: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create room: {str(e)}"
+            detail="Failed to create room"
         )
 
 @app.post("/api/meet", response_model=CreateRoomResponse)
@@ -226,7 +237,7 @@ async def create_meeting(request: Request):
         url_path = f"/m/{room.token}"
         url = f"{base_url}{url_path}"
         
-        logger.info(f"Meeting created: {room.token}, max_participants: {room.max_participants}")
+        logger.info(f"Meeting created: room_ref={_log_ref(room.token)}, max_participants={room.max_participants}")
         
         return CreateRoomResponse(
             token=room.token, 
@@ -234,10 +245,10 @@ async def create_meeting(request: Request):
             ttlSeconds=7200
         )
     except Exception as e:
-        logger.error(f"Failed to create meeting: {e}")
+        logger.error(f"Failed to create meeting: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create meeting: {str(e)}"
+            detail="Failed to create meeting"
         )
 
 @app.get("/api/rooms/{token}", response_model=RoomInfo)
@@ -249,12 +260,15 @@ async def get_room(token: str):
         
         if (not room) or (now >= room.expires_at and room.participants == 0):
             # Автоматическое создание/воссоздание комнаты
-            logger.info(f"Auto-creating room with token: {token}")
+            logger.info(f"Auto-creating room_ref={_log_ref(token)}")
             room = await store.create_room_with_token(token, MAX_PARTICIPANTS_DEFAULT)
         
         status = "active" if room.participants > 0 else "waiting"
         
-        logger.debug(f"Room info requested: {token}, participants: {room.participants}, status: {status}")
+        logger.debug(
+            f"Room info requested: room_ref={_log_ref(token)}, "
+            f"participants={room.participants}, status={status}"
+        )
         
         return RoomInfo(
             token=token, 
@@ -264,10 +278,10 @@ async def get_room(token: str):
             expiresAt=room.expires_at
         )
     except Exception as e:
-        logger.error(f"Failed to get room {token}: {e}")
+        logger.error(f"Failed to get room_ref={_log_ref(token)}: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get room info: {str(e)}"
+            detail="Failed to get room info"
         )
 
 @app.get("/api/meet/{token}", response_model=RoomInfo)
@@ -290,8 +304,8 @@ async def get_meeting(token: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to get meeting {token}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to get meeting room_ref={_log_ref(token)}: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Failed to get meeting info")
 
 # --- WebSocket signaling с улучшенной обработкой ошибок ---
 
@@ -316,21 +330,30 @@ async def send_error(ws: WebSocket, code: str, message: str, details: Optional[s
     
     try:
         await ws.send_text(json.dumps(error_data))
-        logger.warning(f"Sent error to client: {code} - {message}")
+        logger.warning(f"Sent error to client: code={code}")
     except Exception as e:
-        logger.error(f"Failed to send error to client: {e}")
+        logger.error(f"Failed to send error to client: {type(e).__name__}")
 
 @asynccontextmanager
 async def websocket_connection_manager(ws: WebSocket, token: str, peer_id: Optional[str] = None):
     """Контекстный менеджер для управления WebSocket соединениями"""
     try:
-        logger.info(f"WebSocket connection established: token={token}, peer={peer_id}")
+        logger.info(
+            f"WebSocket connection established: room_ref={_log_ref(token)}, "
+            f"peer_ref={_log_ref(peer_id)}"
+        )
         yield ws
     except Exception as e:
-        logger.error(f"WebSocket connection error: token={token}, peer={peer_id}, error={e}")
+        logger.error(
+            f"WebSocket connection error: room_ref={_log_ref(token)}, "
+            f"peer_ref={_log_ref(peer_id)}, error={type(e).__name__}"
+        )
         raise
     finally:
-        logger.info(f"WebSocket connection closed: token={token}, peer={peer_id}")
+        logger.info(
+            f"WebSocket connection closed: room_ref={_log_ref(token)}, "
+            f"peer_ref={_log_ref(peer_id)}"
+        )
 
 async def handle_websocket_message(ws: WebSocket, token: str, peer_id: str, data: dict):
     """Обработка сообщений WebSocket с улучшенной валидацией"""
@@ -366,8 +389,8 @@ async def handle_websocket_message(ws: WebSocket, token: str, peer_id: str, data
             return False
             
     except Exception as e:
-        logger.error(f"Error handling WebSocket message: {e}")
-        await send_error(ws, "internal_error", "Internal server error", str(e))
+        logger.error(f"Error handling WebSocket message: {type(e).__name__}")
+        await send_error(ws, "internal_error", "Internal server error")
         return False
 
 async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -391,7 +414,10 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
         
         # Регистрируем соединение в глобальном реестре
         connections.setdefault(token, {})[join.peerId] = ws
-        logger.info(f"Peer joined: token={token}, peer={join.peerId}, name={join.name}, total_participants={room.participants}, others_count={len(others)}")
+        logger.info(
+            f"Peer joined: room_ref={_log_ref(token)}, peer_ref={_log_ref(join.peerId)}, "
+            f"total_participants={room.participants}, others_count={len(others)}"
+        )
         
         # Отправляем информацию о комнате (список peers на момент входа)
         try:
@@ -402,7 +428,7 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
                 "timestamp": datetime.utcnow().isoformat()
             }))
         except Exception as e:
-            logger.error(f"Failed to send room info: {e}")
+            logger.error(f"Failed to send room info: {type(e).__name__}")
         
         # Уведомляем других участников
         await broadcast(token, join.peerId, {
@@ -415,8 +441,8 @@ async def handle_join_message(ws: WebSocket, token: str, peer_id: str, data: dic
         return True
         
     except Exception as e:
-        logger.error(f"Join message handling failed: {e}")
-        await send_error(ws, "bad_join", f"Invalid join message: {str(e)}")
+        logger.error(f"Join message handling failed: {type(e).__name__}")
+        await send_error(ws, "bad_join", "Invalid join message")
         return False
 
 async def handle_sdp_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -424,11 +450,11 @@ async def handle_sdp_message(ws: WebSocket, token: str, peer_id: str, data: dict
     try:
         sdp = SDPMessage(**data)
         await broadcast(token, sdp.peerId, sdp.model_dump())
-        logger.debug(f"SDP message forwarded: type={data.get('type')}, peer={sdp.peerId}")
+        logger.debug(f"SDP message forwarded: type={data.get('type')}, peer_ref={_log_ref(sdp.peerId)}")
         return True
     except Exception as e:
-        logger.error(f"SDP message handling failed: {e}")
-        await send_error(ws, "bad_sdp", f"Invalid SDP message: {str(e)}")
+        logger.error(f"SDP message handling failed: {type(e).__name__}")
+        await send_error(ws, "bad_sdp", "Invalid SDP message")
         return False
 
 async def handle_ice_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -436,11 +462,11 @@ async def handle_ice_message(ws: WebSocket, token: str, peer_id: str, data: dict
     try:
         ice = IceMessage(**data)
         await broadcast(token, ice.peerId, ice.model_dump())
-        logger.debug(f"ICE candidate forwarded: peer={ice.peerId}")
+        logger.debug(f"ICE candidate forwarded: peer_ref={_log_ref(ice.peerId)}")
         return True
     except Exception as e:
-        logger.error(f"ICE message handling failed: {e}")
-        await send_error(ws, "bad_candidate", f"Invalid ICE candidate: {str(e)}")
+        logger.error(f"ICE message handling failed: {type(e).__name__}")
+        await send_error(ws, "bad_candidate", "Invalid ICE candidate")
         return False
 
 async def handle_bye_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -448,11 +474,13 @@ async def handle_bye_message(ws: WebSocket, token: str, peer_id: str, data: dict
     try:
         bye = ByeMessage(**data)
         await broadcast(token, bye.peerId, bye.model_dump())
-        logger.info(f"Peer leaving: token={token}, peer={bye.peerId}")
+        logger.info(
+            f"Peer leaving: room_ref={_log_ref(token)}, peer_ref={_log_ref(bye.peerId)}"
+        )
         return True
     except Exception as e:
-        logger.error(f"BYE message handling failed: {e}")
-        await send_error(ws, "bad_bye", f"Invalid bye message: {str(e)}")
+        logger.error(f"BYE message handling failed: {type(e).__name__}")
+        await send_error(ws, "bad_bye", "Invalid bye message")
         return False
 
 async def handle_orientation_message(ws: WebSocket, token: str, peer_id: str, data: dict):
@@ -460,11 +488,11 @@ async def handle_orientation_message(ws: WebSocket, token: str, peer_id: str, da
     try:
         orient = OrientationMessage(**data)
         await broadcast(token, orient.peerId, orient.model_dump())
-        logger.debug(f"Orientation message forwarded: peer={orient.peerId}, layout={orient.layout}")
+        logger.debug(f"Orientation message forwarded: peer_ref={_log_ref(orient.peerId)}, layout={orient.layout}")
         return True
     except Exception as e:
-        logger.error(f"Orientation message handling failed: {e}")
-        await send_error(ws, "bad_orientation", f"Invalid orientation message: {str(e)}")
+        logger.error(f"Orientation message handling failed: {type(e).__name__}")
+        await send_error(ws, "bad_orientation", "Invalid orientation message")
         return False
 
 @app.websocket("/ws/rooms/{token}")
@@ -477,7 +505,7 @@ async def ws_room(ws: WebSocket, token: str):
     if (not room) or (now >= room.expires_at and room.participants == 0):
         # Автоматическое создание/воссоздание комнаты
         room = await store.create_room_with_token(token, MAX_PARTICIPANTS_DEFAULT)
-        logger.info(f"Auto-created room for WebSocket: {token}")
+        logger.info(f"Auto-created room for WebSocket: room_ref={_log_ref(token)}")
 
     peer_id: Optional[str] = None
     retry_count = 0
@@ -497,12 +525,18 @@ async def ws_room(ws: WebSocket, token: str):
                         new_peer_id = data.get("peerId")
                         if new_peer_id:
                             if peer_id and peer_id != new_peer_id:
-                                logger.info(f"Peer ID changed: {peer_id} -> {new_peer_id}")
+                                logger.info(
+                                    f"Peer ID changed: old_peer_ref={_log_ref(peer_id)}, "
+                                    f"new_peer_ref={_log_ref(new_peer_id)}"
+                                )
                             peer_id = new_peer_id
                     
                     if not success:
                         retry_count += 1
-                        logger.warning(f"Message handling failed ({retry_count}/{WS_RETRY_ATTEMPTS}) for {token}/{peer_id}")
+                        logger.warning(
+                            f"Message handling failed ({retry_count}/{WS_RETRY_ATTEMPTS}) for "
+                            f"room_ref={_log_ref(token)} peer_ref={_log_ref(peer_id)}"
+                        )
                         if retry_count >= WS_RETRY_ATTEMPTS:
                             logger.error(f"Too many failed messages, closing connection")
                             break
@@ -512,7 +546,10 @@ async def ws_room(ws: WebSocket, token: str):
                     retry_count = 0
                     
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Invalid JSON from {token}/{peer_id}: {e}")
+                    logger.warning(
+                        f"Invalid JSON from room_ref={_log_ref(token)} "
+                        f"peer_ref={_log_ref(peer_id)}: {type(e).__name__}"
+                    )
                     await send_error(ws, "bad_json", "Invalid JSON format")
                     retry_count += 1
                     if retry_count >= WS_RETRY_ATTEMPTS:
@@ -520,18 +557,21 @@ async def ws_room(ws: WebSocket, token: str):
                     continue
                     
                 except WebSocketDisconnect:
-                    logger.info(f"WebSocket disconnect: token={token}, peer={peer_id}")
+                    logger.info(
+                        f"WebSocket disconnect: room_ref={_log_ref(token)}, "
+                        f"peer_ref={_log_ref(peer_id)}"
+                    )
                     break
                     
                 except Exception as e:
-                    logger.error(f"Unexpected error in WebSocket loop: {e}")
+                    logger.error(f"Unexpected error in WebSocket loop: {type(e).__name__}")
                     retry_count += 1
                     if retry_count >= WS_RETRY_ATTEMPTS:
                         break
                     await asyncio.sleep(min(WS_RETRY_DELAY * (2 ** retry_count), WS_MAX_RETRY_DELAY))
                     
         except Exception as e:
-            logger.error(f"Critical WebSocket error: {e}")
+            logger.error(f"Critical WebSocket error: {type(e).__name__}")
         finally:
             # Очистка при отключении
             if peer_id:
@@ -544,9 +584,15 @@ async def ws_room(ws: WebSocket, token: str):
                         # Удаляем только если это то же самое соединение, которое мы создали
                         if connections[token][peer_id] is ws:
                             del connections[token][peer_id]
-                            logger.info(f"Connection removed from registry: {token}/{peer_id}")
+                            logger.info(
+                                f"Connection removed from registry: room_ref={_log_ref(token)} "
+                                f"peer_ref={_log_ref(peer_id)}"
+                            )
                         else:
-                            logger.debug(f"Registry already has newer connection for {token}/{peer_id}, skip removal")
+                            logger.debug(
+                                f"Registry already has newer connection for room_ref={_log_ref(token)} "
+                                f"peer_ref={_log_ref(peer_id)}, skip removal"
+                            )
                     
                     await broadcast(token, peer_id, {
                         "type": "peer-left", 
@@ -554,17 +600,23 @@ async def ws_room(ws: WebSocket, token: str):
                         "timestamp": datetime.utcnow().isoformat()
                     })
                     
-                    logger.info(f"Peer cleanup completed: token={token}, peer={peer_id}")
+                    logger.info(
+                        f"Peer cleanup completed: room_ref={_log_ref(token)}, "
+                        f"peer_ref={_log_ref(peer_id)}"
+                    )
                     
                 except Exception as e:
-                    logger.error(f"Error during peer cleanup: {e}")
+                    logger.error(f"Error during peer cleanup: {type(e).__name__}")
 
 async def broadcast(token: str, from_peer: str, payload: dict):
     """Улучшенная функция broadcast с поддержкой адресной доставки (field 'to')"""
     target = payload.get("to")
     peers = connections.get(token, {})
     if not peers:
-        logger.debug(f"Broadcast: no peers in room {token} to send to (from {from_peer})")
+        logger.debug(
+            f"Broadcast: no peers in room_ref={_log_ref(token)} "
+            f"from peer_ref={_log_ref(from_peer)}"
+        )
         return
 
     failed_peers = []
@@ -576,9 +628,14 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         if socket:
             try:
                 await socket.send_text(json.dumps(payload))
-                logger.debug(f"Targeted send: {payload_type} from {from_peer} to {target} in room {token}")
+                logger.debug(
+                    f"Targeted send: {payload_type} from peer_ref={_log_ref(from_peer)} "
+                    f"to peer_ref={_log_ref(target)} in room_ref={_log_ref(token)}"
+                )
             except Exception as e:
-                logger.warning(f"Targeted send failed to {target}: {e}")
+                logger.warning(
+                    f"Targeted send failed to peer_ref={_log_ref(target)}: {type(e).__name__}"
+                )
                 failed_peers.append(target)
         return
 
@@ -588,9 +645,15 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         
         try:
             await socket.send_text(json.dumps(payload))
-            logger.info(f"Broadcast: {payload_type} from {from_peer} sent to {pid} in room {token}")
+            logger.info(
+                f"Broadcast: {payload_type} from peer_ref={_log_ref(from_peer)} "
+                f"to peer_ref={_log_ref(pid)} in room_ref={_log_ref(token)}"
+            )
         except Exception as e:
-            logger.warning(f"Broadcast failed: {payload_type} from {from_peer} to {pid}: {e}")
+            logger.warning(
+                f"Broadcast failed: {payload_type} from peer_ref={_log_ref(from_peer)} "
+                f"to peer_ref={_log_ref(pid)}: {type(e).__name__}"
+            )
             failed_peers.append(pid)
     
     # Удаляем неработающие соединения
@@ -600,7 +663,9 @@ async def broadcast(token: str, from_peer: str, payload: dict):
         except Exception:
             pass
         del peers[pid]
-        logger.info(f"Removed failed peer {pid} from room {token}")
+        logger.info(
+            f"Removed failed peer_ref={_log_ref(pid)} from room_ref={_log_ref(token)}"
+        )
 
 # --- Security ---
 security = HTTPBasic()
@@ -640,7 +705,7 @@ async def admin_connections(username: str = Depends(authenticate_admin)):
             try:
                 room = await store.get_room(token)
             except Exception as e:
-                logger.error(f"Failed to get room {token}: {e}")
+                logger.error(f"Failed to get room_ref={_log_ref(token)}: {type(e).__name__}")
                 room = None
             
             peers_list = []
@@ -686,10 +751,10 @@ async def admin_connections(username: str = Depends(authenticate_admin)):
         }
         
     except Exception as e:
-        logger.error(f"Admin connections endpoint failed: {e}")
+        logger.error(f"Admin connections endpoint failed: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get connections info: {str(e)}"
+            detail="Failed to get connections info"
         )
 
 @app.delete("/api/admin/connections/{token}/{peer_id}")
@@ -709,7 +774,7 @@ async def admin_disconnect(token: str, peer_id: str, username: str = Depends(aut
                 "timestamp": datetime.utcnow().isoformat()
             }))
         except Exception as e:
-            logger.warning(f"Failed to send kick message: {e}")
+            logger.warning(f"Failed to send kick message: {type(e).__name__}")
         
         await ws.close(code=4401)
         
@@ -721,17 +786,20 @@ async def admin_disconnect(token: str, peer_id: str, username: str = Depends(aut
         if room:
             room.leave(peer_id)
         
-        logger.info(f"Admin disconnected peer {peer_id} from room {token}")
+        logger.info(
+            f"Admin disconnected peer_ref={_log_ref(peer_id)} "
+            f"from room_ref={_log_ref(token)}"
+        )
         
         return JSONResponse({"ok": True, "message": f"Peer {peer_id} disconnected from room {token}"})
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Admin disconnect failed: {e}")
+        logger.error(f"Admin disconnect failed: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to disconnect peer: {str(e)}"
+            detail="Failed to disconnect peer"
         )
 
 # --- Admin preview endpoints с улучшенной обработкой ошибок ---
@@ -799,7 +867,10 @@ async def admin_upload_preview(token: str, peer_id: str, request: Request):
             "size": len(body)
         }
         
-        logger.debug(f"Preview uploaded: token={token}, peer={peer_id}, size={len(body)} bytes")
+        logger.debug(
+            f"Preview uploaded: room_ref={_log_ref(token)}, peer_ref={_log_ref(peer_id)}, "
+            f"size={len(body)} bytes"
+        )
         
         return JSONResponse({
             "ok": True, 
@@ -810,10 +881,10 @@ async def admin_upload_preview(token: str, peer_id: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Preview upload failed: {e}")
+        logger.error(f"Preview upload failed: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload preview: {str(e)}"
+            detail="Failed to upload preview"
         )
 
 @app.get("/api/admin/preview/{token}/{peer_id}")
@@ -829,7 +900,9 @@ async def admin_get_preview(token: str, peer_id: str, username: str = Depends(au
                 detail="Preview not found or expired"
             )
         
-        logger.debug(f"Preview retrieved: token={token}, peer={peer_id}")
+        logger.debug(
+            f"Preview retrieved: room_ref={_log_ref(token)}, peer_ref={_log_ref(peer_id)}"
+        )
         
         return Response(
             content=meta["bytes"], 
@@ -844,10 +917,10 @@ async def admin_get_preview(token: str, peer_id: str, username: str = Depends(au
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Preview retrieval failed: {e}")
+        logger.error(f"Preview retrieval failed: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve preview: {str(e)}"
+            detail="Failed to retrieve preview"
         )
 
 # --- SEO ROUTES ---
@@ -891,7 +964,7 @@ async def catch_all(request: Request, path: str):
         html = seo.inject_metadata(html, metadata, f"/{path}", request.headers.get("host", ""))
         return html
     except Exception as e:
-        logger.error(f"Failed to serve index.html: {e}")
+        logger.error(f"Failed to serve index.html: {type(e).__name__}")
         return HTMLResponse(content="<html><body>Error loading page</body></html>", status_code=500)
 
 # Запуск сервера с улучшенной конфигурацией
@@ -902,7 +975,9 @@ if __name__ == "__main__":
         port=8000,
         reload=False,
         log_level="info",
-        access_log=True,
+        # Access logs include request paths; room and meeting paths contain
+        # private identifiers and are deliberately not persisted.
+        access_log=False,
         timeout_keep_alive=30,
         timeout_graceful_shutdown=30
     )

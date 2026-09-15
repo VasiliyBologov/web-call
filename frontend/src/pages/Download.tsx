@@ -8,6 +8,7 @@ import {
   getStoreUrl,
   isCrawlerUserAgent,
 } from '../storeLinks'
+import { getAnalyticsPath, trackEvent } from '../analytics'
 
 const AppleIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="h-8 w-8 fill-current">
@@ -28,14 +29,16 @@ type StoreButtonProps = {
   href: string
   eyebrow: string
   title: string
+  store: 'app_store' | 'google_play'
   icon: React.ReactNode
 }
 
-export const StoreButton: React.FC<StoreButtonProps> = ({ href, eyebrow, title, icon }) => (
+export const StoreButton: React.FC<StoreButtonProps> = ({ href, eyebrow, title, store, icon }) => (
   <a
     href={href}
     target="_blank"
     rel="noopener noreferrer"
+    onClick={() => trackEvent('store_click', { store, landing_page: getAnalyticsPath() })}
     className="flex min-w-56 items-center gap-3 rounded-2xl border border-white/15 bg-white px-5 py-3 text-left text-slate-950 shadow-xl transition-all hover:-translate-y-0.5 hover:bg-slate-100 active:scale-95"
   >
     {icon}
@@ -48,12 +51,12 @@ export const StoreButton: React.FC<StoreButtonProps> = ({ href, eyebrow, title, 
 
 export const AppStoreButton = () => {
   const { t } = useTranslation()
-  return <StoreButton href={APP_STORE_URL} eyebrow={t('download.on')} title="App Store" icon={<AppleIcon />} />
+  return <StoreButton href={APP_STORE_URL} eyebrow={t('download.on')} title="App Store" store="app_store" icon={<AppleIcon />} />
 }
 
 export const GooglePlayButton = () => {
   const { t } = useTranslation()
-  return <StoreButton href={GOOGLE_PLAY_URL} eyebrow={t('download.on')} title="Google Play" icon={<GooglePlayIcon />} />
+  return <StoreButton href={GOOGLE_PLAY_URL} eyebrow={t('download.on')} title="Google Play" store="google_play" icon={<GooglePlayIcon />} />
 }
 
 export const Download: React.FC = () => {
@@ -65,7 +68,12 @@ export const Download: React.FC = () => {
 
     const platform = detectMobilePlatform(navigator.userAgent, navigator.maxTouchPoints)
     const storeUrl = getStoreUrl(platform)
-    if (storeUrl) window.location.replace(storeUrl)
+    if (!storeUrl) return
+
+    const store = platform === 'ios' ? 'app_store' : 'google_play'
+    trackEvent('store_click', { store, landing_page: getAnalyticsPath() })
+    const redirectTimer = window.setTimeout(() => window.location.replace(storeUrl), 150)
+    return () => window.clearTimeout(redirectTimer)
   }, [])
 
   return (

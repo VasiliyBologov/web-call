@@ -13,6 +13,14 @@ import CameraswitchIcon from '@mui/icons-material/Cameraswitch'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
+import {
+  AnalyticsConnectionType,
+  detectConnectionType,
+  getDeviceCategory,
+  getSafeErrorCode,
+  getSafeServerCode,
+  trackEvent,
+} from '../analytics'
 
 // Конфигурация retry логики
 const WS_RETRY_CONFIG = {
@@ -237,6 +245,13 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const pendingCandidatesRef = useRef<any[]>([])
   const [recover, setRecover] = useState<{ title: string; details?: string } | null>(null)
   const hasEverConnectedRef = useRef(false)
+  const guestJoinedTrackedRef = useRef(false)
+  const callConnectedTrackedRef = useRef(false)
+  const call60TrackedRef = useRef(false)
+  const call60TimerRef = useRef<number | null>(null)
+  const remoteTrackReceivedRef = useRef(false)
+  const connectionTypeRef = useRef<AnalyticsConnectionType>('unknown')
+  const trackedFailureKeysRef = useRef<Set<string>>(new Set())
   const wsReconnectAttemptsRef = useRef(0)
   const wsReconnectTimerRef = useRef<number | null>(null)
   const wsConnectionStateRef = useRef<'connecting' | 'connected' | 'disconnected' | 'failed'>('disconnected')
@@ -256,6 +271,64 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   const desiredMicOnRef = useRef(true)
   const desiredCamOnRef = useRef(true)
   const pageActiveRef = useRef(true)
+
+  function trackGuestJoined() {
+    if (guestJoinedTrackedRef.current) return
+    guestJoinedTrackedRef.current = true
+    trackEvent('guest_joined', {
+      room_type: 'private',
+      device_category: getDeviceCategory(),
+    })
+  }
+
+  function clearCall60Timer() {
+    if (call60TimerRef.current) {
+      window.clearTimeout(call60TimerRef.current)
+      call60TimerRef.current = null
+    }
+  }
+
+  function scheduleCall60() {
+    if (call60TrackedRef.current || call60TimerRef.current) return
+    call60TimerRef.current = window.setTimeout(() => {
+      call60TimerRef.current = null
+      const state = pcRef.current?.iceConnectionState
+      if (state !== 'connected' && state !== 'completed') return
+      call60TrackedRef.current = true
+      trackEvent('call_60s', {
+        room_type: 'private',
+        connection_type: connectionTypeRef.current,
+      })
+    }, 60_000)
+  }
+
+  function trackConnectedCall(pc: RTCPeerConnection) {
+    const state = pc.iceConnectionState
+    if (!remoteTrackReceivedRef.current || (state !== 'connected' && state !== 'completed')) return
+    scheduleCall60()
+    if (callConnectedTrackedRef.current) return
+    callConnectedTrackedRef.current = true
+
+    void detectConnectionType(pc).then(connectionType => {
+      connectionTypeRef.current = connectionType
+      trackEvent('call_connected', {
+        room_type: 'private',
+        connection_type: connectionType,
+      })
+    })
+  }
+
+  function trackCallFailure(failureStage: string, errorCode: string) {
+    const safeCode = getSafeServerCode(errorCode)
+    const key = `${failureStage}:${safeCode}`
+    if (trackedFailureKeysRef.current.has(key)) return
+    trackedFailureKeysRef.current.add(key)
+    trackEvent('call_failed', {
+      room_type: 'private',
+      failure_stage: failureStage,
+      error_code: safeCode,
+    })
+  }
 
   const isPageActive = useCallback((): boolean => {
     return document.visibilityState === 'visible' && document.hasFocus()
@@ -496,11 +569,12 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         ws.onmessage = async ev => {
           try {
             const msg: WSMsg = JSON.parse(ev.data)
-            if (msg.type === 'error') {
+          if (msg.type === 'error') {
             // Улучшенная обработка ошибок с деталями
             const errorMessage = msg.details ? `${msg.message}: ${msg.details}` : msg.message
             setStatus({ raw: `${t('room.status.error')}: ${msg.code}` })
             console.error('WebSocket error received:', { code: msg.code, message: msg.message, details: msg.details, timestamp: msg.timestamp })
+            trackCallFailure('signaling', msg.code)
             
             // Специальная обработка для критических ошибок
             if (msg.code === 'room_full') {
@@ -521,12 +595,14 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             const others = Array.isArray(msg.peers) ? msg.peers : []
             if (others.length > 0) {
               ensurePoliteFor(others[0])
+              trackGuestJoined()
             }
             roleRef.current = (others.length > 0) ? 'answerer' : 'offerer'
             if (roleRef.current === 'offerer') {
               await makeOffer()
             }
           } else if (msg.type === 'peer-joined') {
+            trackGuestJoined()
             ensurePoliteFor((msg as any).peerId)
             if (roleRef.current === 'offerer') {
               // Send (or resend) offer once a peer is present
@@ -605,6 +681,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
               console.warn('Failed to add ICE', e)
             }
           } else if (msg.type === 'peer-left') {
+            clearCall60Timer()
             setStatus({ key: 'room.status.disconnected' })
           }
         } catch (e) {
@@ -635,6 +712,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           
           if (attempt > WS_RETRY_CONFIG.maxAttempts) {
             wsConnectionStateRef.current = 'failed'
+            trackCallFailure('signaling', 'ws_retries_exhausted')
             setStatus({ key: 'room.error.create.title' })
             setRecover({ 
               title: t('room.error.connection.title'), 
@@ -685,6 +763,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       const name = err?.name || 'Error'
       const message = err?.message || String(err)
       console.error('Initialization failed', err)
+      trackCallFailure('initialization', getSafeErrorCode(err))
       setStatus({ raw: `${t('room.error.init.title')}: ${name}${message ? ': ' + message : ''}` })
     })
 
@@ -699,6 +778,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         window.clearTimeout(disconnectedTimerRef.current)
         disconnectedTimerRef.current = null
       }
+      clearCall60Timer()
       if (wsReconnectTimerRef.current) {
         window.clearTimeout(wsReconnectTimerRef.current)
         wsReconnectTimerRef.current = null
@@ -993,6 +1073,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   function wirePcHandlers(pc: RTCPeerConnection) {
     pc.ontrack = async ev => {
       console.log('[WebRTC] Remote track received:', ev.track.kind, 'Streams:', ev.streams.length)
+      remoteTrackReceivedRef.current = true
+      trackConnectedCall(pc)
       
       if (!remoteStreamRef.current) {
         remoteStreamRef.current = new MediaStream()
@@ -1044,6 +1126,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       setStatus({ raw: `ICE: ${state}` })
       if (state === 'connected' || state === 'completed') {
         hasEverConnectedRef.current = true
+        trackConnectedCall(pc)
         iceRetriesRef.current = 0
         if (disconnectedTimerRef.current) {
           window.clearTimeout(disconnectedTimerRef.current)
@@ -1053,6 +1136,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
         setStatus({ key: 'room.status.online' })
       }
       if (state === 'disconnected') {
+        clearCall60Timer()
         setStatus({ key: 'room.status.reconnecting' })
         if (disconnectedTimerRef.current) {
           window.clearTimeout(disconnectedTimerRef.current)
@@ -1063,6 +1147,8 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           }
         }, 5000)
       } else if (state === 'failed') {
+        clearCall60Timer()
+        trackCallFailure('ice', 'ice_failed')
         attemptIceRestart()
         // Enhanced TURN fallback with better diagnostics
         const policy = (pc as any).__policy || ICE_TRANSPORT_POLICY
@@ -1443,9 +1529,18 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
   }
 
   function hangup() {
+    clearCall60Timer()
     try { wsRef.current?.close() } catch {}
     try { pcRef.current?.close() } catch {}
     window.location.href = '/'
+  }
+
+  async function copyRoomLink() {
+    await navigator.clipboard.writeText(link)
+    trackEvent('link_shared', {
+      room_type: 'private',
+      share_method: 'clipboard',
+    })
   }
 
   async function createNewRoom() {
@@ -1469,9 +1564,15 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
       if (!url) throw new Error('Invalid response: missing URL')
       
       networkDiagnostics.logConnection('api', true, undefined, Date.now() - startTime)
+      trackEvent('room_created', {
+        room_type: 'private',
+        landing_page: '/r/:token',
+        language: i18n.resolvedLanguage || i18n.language,
+      })
       window.location.href = url
     } catch (e) {
       console.error('createNewRoom failed:', e)
+      trackCallFailure('room_creation', getSafeErrorCode(e))
       networkDiagnostics.logConnection('api', false, e instanceof Error ? e.message : String(e))
       setStatus({ key: 'room.error.create.title' })
       setRecover({ 
@@ -1589,7 +1690,7 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
           </Tooltip>
 
           <Tooltip title={t('room.copyLink')}>
-            <IconButton onClick={() => navigator.clipboard.writeText(link)} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
+            <IconButton onClick={copyRoomLink} size="large" sx={{ bgcolor: 'rgba(0,0,0,0.5)', color: 'white', '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' } }}>
               <ContentCopyIcon />
             </IconButton>
           </Tooltip>
@@ -1603,4 +1704,3 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     </div>
   )
 }
-

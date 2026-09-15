@@ -34,7 +34,7 @@ up: env ## Запустить контейнер в фоновом режиме
 	@docker run -d \
 		--name $(CONTAINER_NAME) \
 		--env-file .env \
-		-p 80:80 \
+		-p 8080:80 \
 		--restart unless-stopped \
 		$(IMAGE_NAME)
 
