@@ -153,6 +153,7 @@ type WSMsg =
   | { type: 'room-info'; peers: string[]; max: number }
   | { type: 'peer-joined'; peerId: string }
   | { type: 'peer-left'; peerId: string }
+  | { type: 'bye'; peerId: string }
   | { type: 'offer' | 'answer'; peerId: string; sdp: any }
   | { type: 'candidate'; peerId: string; candidate: any }
   | { type: 'orientation'; peerId: string; layout: 'portrait' | 'landscape' }
@@ -680,9 +681,10 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
             } catch (e) {
               console.warn('Failed to add ICE', e)
             }
-          } else if (msg.type === 'peer-left') {
+          } else if (msg.type === 'peer-left' || msg.type === 'bye') {
             clearCall60Timer()
-            setStatus({ key: 'room.status.disconnected' })
+            cleanupMedia()
+            setStatus({ key: 'room.status.partnerLeft' })
           }
         } catch (e) {
           console.error('[WS] Failed to process message:', e)
@@ -1528,8 +1530,27 @@ export const Room: React.FC<{ token: string }> = ({ token }) => {
     }
   }
 
+  function cleanupMedia() {
+    try {
+      if (pcRef.current) {
+        pcRef.current.close()
+        pcRef.current = null
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null
+      }
+      remoteStreamRef.current = null
+      remoteTrackReceivedRef.current = false
+    } catch (e) {
+      console.warn('Media cleanup failed:', e)
+    }
+  }
+
   function hangup() {
     clearCall60Timer()
+    try {
+      send({ type: 'bye', peerId: peerIdRef.current })
+    } catch (e) {}
     try { wsRef.current?.close() } catch {}
     try { pcRef.current?.close() } catch {}
     window.location.href = '/'

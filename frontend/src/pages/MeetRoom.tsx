@@ -342,7 +342,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
           if (!peer.ignoreOffer()) throw err
         }
       }
-    } else if (type === 'peer-left') {
+    } else if (type === 'peer-left' || type === 'bye') {
       connectedPeerIdsRef.current.delete(senderId)
       remoteTrackPeerIdsRef.current.delete(senderId)
       if (connectedPeerIdsRef.current.size === 0) clearCall60Timer()
@@ -359,6 +359,13 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
   }, [clearCall60Timer, createPeerConnection, send, trackCallFailure, trackGuestJoined])
 
   handleSignalingRef.current = handleSignaling
+
+  const hangup = useCallback(() => {
+    try {
+      send({ type: 'bye', peerId: peerIdRef.current })
+    } catch (e) {}
+    window.location.href = '/'
+  }, [send])
 
   // Initialize Media and WS
   const joinMeeting = useCallback(async () => {
@@ -667,7 +674,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
           <IconButton onClick={copyLink} color="inherit">
             <ContentCopyIcon />
           </IconButton>
-          <IconButton onClick={() => window.location.href = '/'} color="error" className="bg-red-500/10">
+          <IconButton onClick={hangup} color="error" className="bg-red-500/10">
             <CallEndIcon />
           </IconButton>
         </div>
@@ -814,7 +821,7 @@ export const MeetRoom: React.FC<MeetRoomProps> = ({ token }) => {
 
         <Tooltip title={t('room.hangup')}>
           <IconButton 
-            onClick={() => window.location.href = '/'}
+            onClick={hangup}
             size="large"
             sx={{ 
               p: 2.5,
