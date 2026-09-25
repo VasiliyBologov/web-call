@@ -51,6 +51,7 @@ export const Landing: React.FC = () => {
         </div>
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
           <a href="#how-it-works" className="hover:text-white transition-colors text-xs uppercase tracking-widest">{t('nav.howItWorks')}</a>
+          <a href="/business" className="hover:text-white transition-colors text-xs uppercase tracking-widest">{t('nav.business')}</a>
         </nav>
         <div className="flex items-center gap-4">
           <LanguageSwitcher />
@@ -242,6 +243,7 @@ export const Landing: React.FC = () => {
             {t('footer.copy')}
           </div>
           <div className="flex gap-6">
+            <a href="/business" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">{t('nav.business')}</a>
             <a href="/privacy" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Privacy</a>
             <a href="/web-calls" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Web calls</a>
             <a href="/blog" className="text-slate-500 hover:text-white transition-colors text-xs uppercase font-bold tracking-widest">Blog</a>
