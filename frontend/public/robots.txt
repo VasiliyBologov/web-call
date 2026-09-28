@@ -3,13 +3,12 @@ User-agent: *
 Allow: /
 Allow: /download
 Allow: /business
+Allow: /privacy
 Disallow: /api/
 Disallow: /admin/
 Disallow: /cabinet/
 Disallow: /profile/
 Disallow: /temp/
-Disallow: /r/
-Disallow: /m/
 
 # Allow AI Bots
 User-agent: GPTBot

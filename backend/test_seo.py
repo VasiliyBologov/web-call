@@ -24,6 +24,8 @@ def test_download_page_explicitly_allowed_in_robots():
     robots = seo.get_robots_txt("", "talklink.space")
 
     assert "Allow: /download" in robots
+    assert "Allow: /business" in robots
+    assert "Allow: /privacy" in robots
 
 
 def test_download_html_has_index_directive():
@@ -72,9 +74,9 @@ def test_sitemap_uses_content_update_dates_instead_of_request_date():
         for node in root.findall("sitemap:url", namespace)
     }
 
-    assert entries["https://talklink.space/web-calls"] == "2026-09-08"
-    assert entries["https://talklink.space/blog/changelog-last-3-months"] == "2026-09-08"
-    assert entries["https://talklink.space/blog/google-meet-alternative"] == "2026-06-09"
+    assert entries["https://talklink.space/web-calls"] == "2026-09-28"
+    assert entries["https://talklink.space/blog/changelog-last-3-months"] == "2026-09-28"
+    assert entries["https://talklink.space/blog/google-meet-alternative"] == "2026-09-28"
 
 
 def test_hreflang_is_not_advertised_without_language_specific_urls():
@@ -103,3 +105,61 @@ def test_homepage_schema_uses_legal_operator_and_store_profiles():
     assert '"alternateName": "TalkLink"' in json_ld
     assert "https://play.google.com/store/apps/details?id=talk.link.space" in json_ld
     assert "https://apps.apple.com/app/talklinkspace/id6805110249" in json_ld
+
+
+def test_every_public_page_is_indexable_prerendered_and_in_sitemap():
+    html = '<html lang="en"><head><title>Old</title><meta name="description" content="Old" /><meta name="robots" content="index, follow" /><link rel="canonical" href="https://talklink.space/" /></head><body><div id="root"></div></body></html>'
+    sitemap = seo.get_sitemap_xml("", "talklink.space")
+    root = ElementTree.fromstring(sitemap)
+    namespace = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    locations = {
+        node.text.removeprefix("https://talklink.space") or "/"
+        for node in root.findall("sitemap:url/sitemap:loc", namespace)
+    }
+
+    assert locations == seo.INDEXABLE_PATHS
+    assert locations == set(seo.PUBLIC_PAGE_CONTENT)
+    assert len(locations) == 22
+
+    for path in locations:
+        metadata = seo.generate_metadata("", path, "talklink.space")
+        rendered = seo.inject_metadata(html, metadata, path, "talklink.space")
+
+        assert metadata["noindex"] is False, path
+        assert metadata["canonical"] == f"https://talklink.space{path if path != '/' else '/'}", path
+        assert not metadata["title"].startswith("TalkLink - Blog/"), path
+        assert "Learn more about" not in metadata["description"], path
+        assert '<meta name="robots" content="index, follow" />' in rendered, path
+        assert '<div id="root"><main id="seo-content">' in rendered, path
+        assert "<h1>" in rendered and "<p>" in rendered, path
+        assert len(seo.PRERENDERED_CONTENT[path]) >= 800, path
+
+
+def test_private_and_unknown_routes_stay_out_of_search():
+    for path in ["/admin", "/r/private-token", "/m/private-token", "/missing", "/blog/not-a-real-article"]:
+        metadata = seo.generate_metadata("", path, "talklink.space")
+        assert metadata["noindex"] is True, path
+        assert path not in seo.INDEXABLE_PATHS
+
+    assert seo.is_supported_frontend_path("/admin")
+    assert seo.is_supported_frontend_path("/r/private-token")
+    assert seo.is_supported_frontend_path("/m/private-token")
+    assert not seo.is_supported_frontend_path("/missing")
+    assert not seo.is_supported_frontend_path("/blog/not-a-real-article")
+
+
+def test_business_and_privacy_are_public_pages():
+    for path in ["/business", "/privacy"]:
+        metadata = seo.generate_metadata("", path, "talklink.space")
+        assert metadata["noindex"] is False
+        assert path in seo.INDEXABLE_PATHS
+        assert path in seo.PRERENDERED_CONTENT
+
+
+def test_sitemap_and_robots_use_canonical_host():
+    sitemap = seo.get_sitemap_xml("www", "www.talklink.space:443")
+    robots = seo.get_robots_txt("www", "www.talklink.space:443")
+
+    assert "https://talklink.space/" in sitemap
+    assert "www.talklink.space" not in sitemap
+    assert "Sitemap: https://talklink.space/sitemap.xml" in robots

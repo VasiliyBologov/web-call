@@ -2,95 +2,127 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '../components/LanguageSwitcher'
 
-const BLOG_ARTICLES: Record<string, any> = {
+type BlogArticleData = {
+  title: string
+  summary: string
+  sections: Array<{ title: string; body: string }>
+}
+
+const BLOG_ARTICLES: Record<string, BlogArticleData> = {
   'how-to-create-online-video-call-no-registration': {
     title: 'How to Create an Online Video Call Without Registration',
-    content: 'Learn how to start instant video calls without any account or registration. TalkLink provides a simple way to connect with anyone just by sharing a link.'
+    summary: 'A no-registration video call removes the account-creation step for both the organizer and the guest. With TalkLink, the invitation itself is a private room URL.',
+    sections: [
+      { title: '1. Create the right type of room', body: 'Choose a private call for one-to-one communication or a group meeting for several participants. TalkLink generates a random URL for the new room; no profile or email address is required.' },
+      { title: '2. Share the invitation privately', body: 'Copy the complete room URL and send it to the intended participants through a trusted message or email. Anyone with the active link may try to join, so avoid posting it publicly.' },
+      { title: '3. Check the browser before joining', body: 'Open the link in a current browser and allow camera and microphone access. A stable connection and headphones improve reliability and reduce echo. Guests follow the same steps without installing TalkLink.' },
+      { title: 'After the conversation', body: 'Close the room tab when the call ends. Create a fresh random link for a different conversation instead of reusing or publishing an old invitation.' },
+    ],
   },
   'best-browser-video-calling-tools': {
-    title: 'Best Browser Video Calling Tools',
-    content: 'Explore the top tools for video conferencing that work directly in your browser. We compare TalkLink, Google Meet, and other WebRTC-based solutions.'
+    title: 'How to Choose a Browser Video Calling Tool',
+    summary: 'The best tool depends on who is joining and what the meeting needs to accomplish. A quick client call has different requirements from a scheduled company webinar.',
+    sections: [
+      { title: 'Start with guest friction', body: 'Check whether guests need an account, an application, or an organization login. Browser-first tools such as TalkLink are useful when an external participant needs to join quickly from a link.' },
+      { title: 'Compare the controls you actually need', body: 'Consider participant limits, screen sharing, moderation, recording, calendar integration, captions, and support for mobile browsers. More features can help complex meetings but may add setup steps to a simple call.' },
+      { title: 'Review privacy and reliability', body: 'Look for encrypted transport, clear recording behavior, understandable room access, and a privacy policy. Test the tool on the devices and networks your participants commonly use.' },
+      { title: 'Match the tool to the conversation', body: 'Use a lightweight link-based room for spontaneous calls and external guests. Choose a full collaboration suite when the workflow requires managed accounts, scheduled events, recordings, or enterprise administration.' },
+    ],
   },
   'zoom-vs-browser-based-video-calls': {
-    title: 'Zoom vs Browser-Based Video Calls',
-    content: 'Do you really need to download an app? We compare the pros and cons of dedicated software like Zoom versus browser-based calling like TalkLink.'
+    title: 'Installed Meeting Apps vs Browser-Based Video Calls',
+    summary: 'Installed meeting applications and browser rooms solve overlapping problems, but they optimize for different levels of complexity and participant commitment.',
+    sections: [
+      { title: 'Where installed applications help', body: 'A dedicated application can provide deep operating-system integration, managed updates, virtual devices, recording workflows, and advanced controls for large or recurring meetings.' },
+      { title: 'Where browser calls reduce friction', body: 'A browser link is useful for short conversations, first-time guests, support sessions, and client calls. Participants can join without downloading software or creating an account for a service they may use only once.' },
+      { title: 'Security depends on configuration', body: 'Both approaches can encrypt media in transit. Organizers should still control invitations, understand recording settings, update their browser or application, and avoid sharing private meeting links publicly.' },
+      { title: 'Choose per meeting', body: 'Use a full installed suite when you need enterprise management or specialized meeting features. Use TalkLink when speed, simple guest access, and a private link are the priorities.' },
+    ],
   },
   'how-secure-are-browser-video-meetings': {
-    title: 'How Secure Are Browser Video Meetings',
-    content: 'Security is paramount. Learn about WebRTC encryption and how TalkLink ensures your meetings stay private and secure.'
+    title: 'How Secure Are Browser Video Meetings?',
+    summary: 'Modern browser meetings use WebRTC, which requires audio and video to be encrypted in transit. Security still depends on how the room, device, and invitation are handled.',
+    sections: [
+      { title: 'Encryption protects media in transit', body: 'WebRTC encrypts the real-time media sent between participants. When a direct peer connection is unavailable, encrypted media may pass through a TURN relay without becoming unencrypted call content.' },
+      { title: 'Signaling is different from media', body: 'Before media can flow, participants exchange connection information through a signaling service. TalkLink temporarily processes room and connection state but does not record or store the audio and video conversation.' },
+      { title: 'The room link is an access secret', body: 'Send active room URLs only to intended participants. Do not place them in public posts, analytics events, screenshots, or documents accessible to people outside the conversation.' },
+      { title: 'Secure the endpoint too', body: 'Keep the browser and operating system updated, review camera and microphone prompts, use a trusted device, and leave the room when the meeting ends. Transport encryption cannot protect a compromised device.' },
+    ],
   },
   'how-to-create-meeting-link-in-seconds': {
-    title: 'How to Create a Meeting Link in Seconds',
-    content: 'Speed matters. See how you can generate a secure meeting link and start your conversation in less than 5 seconds with TalkLink.'
+    title: 'How to Create a Video Meeting Link in Seconds',
+    summary: 'A meeting link lets participants move directly from an invitation into a browser room. TalkLink creates the URL without asking the organizer to register first.',
+    sections: [
+      { title: 'Create the room', body: 'Open the group meeting page and choose Create meeting. TalkLink returns a unique URL for a room that supports up to ten participants for up to two hours.' },
+      { title: 'Send the complete link', body: 'Copy the URL without shortening or editing it and send it through the communication channel your group already uses. Add the meeting time and purpose so recipients recognize the invitation.' },
+      { title: 'Prepare before guests arrive', body: 'Open the room early, enter the display name you want other participants to see, and check browser permissions. Headphones and a stable network help prevent echo and interruptions.' },
+      { title: 'Create a new link when appropriate', body: 'Treat each room URL as a private invitation. For an unrelated group or a future sensitive conversation, generate a new room instead of circulating an old link.' },
+    ],
   },
   'online-meetings-for-remote-teams': {
-    title: 'Online Meetings for Remote Teams',
-    content: 'Remote work is the new normal. Discover how browser-based video calls can simplify communication for your distributed team.'
+    title: 'Browser Meetings for Remote Teams',
+    summary: 'Remote teams need meetings that are easy to enter and purposeful once they begin. A browser link can remove setup friction for colleagues and external guests.',
+    sections: [
+      { title: 'Use meetings for the right work', body: 'Reserve synchronous calls for decisions, difficult discussions, demonstrations, and topics where rapid clarification matters. Share routine status updates asynchronously when a meeting would add little value.' },
+      { title: 'Make joining predictable', body: 'Send one clear room link with the agenda, time zone, and expected duration. Participants should test their microphone and camera before a client presentation or important review.' },
+      { title: 'Keep small meetings focused', body: 'Assign a facilitator, capture decisions outside the call, and end when the objective is complete. TalkLink group rooms support up to ten participants, which suits check-ins and focused project conversations.' },
+      { title: 'Invite external collaborators', body: 'A no-registration link is convenient for freelancers, candidates, customers, and partners who should not need an account in the team’s main collaboration suite.' },
+    ],
   },
   'video-calls-for-freelancers': {
-    title: 'Video Calls for Freelancers',
-    content: 'As a freelancer, you need reliable and professional tools. TalkLink offers a friction-less way to meet with clients without requiring them to install anything.'
+    title: 'Video Calls for Freelancers and Clients',
+    summary: 'A client should be able to join a consultation without troubleshooting a new account or application. A browser room keeps the invitation simple and professional.',
+    sections: [
+      { title: 'Reduce friction for a new client', body: 'Send a direct room link with the scheduled time, purpose, and expected length. Explain that the browser will ask for camera and microphone access and that no TalkLink registration is required.' },
+      { title: 'Prepare a professional setup', body: 'Check lighting, audio, screen-sharing material, and network stability before the call. Use headphones in shared spaces and close unrelated tabs before presenting your screen.' },
+      { title: 'Protect client conversations', body: 'Send the invitation privately and create a different random room for unrelated clients. Do not include room tokens or full private links in analytics, public calendars, or portfolio screenshots.' },
+      { title: 'Follow up outside the call', body: 'Summarize decisions, responsibilities, and deadlines in writing. TalkLink does not record the conversation, so agreed notes should live in the project system chosen by you and the client.' },
+    ],
   },
   'video-calls-without-downloads': {
-    title: 'Video Calls Without Downloads',
-    content: 'Stop wasting time on software updates and installations. Browser video calls are the future of instant communication.'
+    title: 'Video Calls Without Downloads: How Browser Calling Works',
+    summary: 'A modern browser can capture camera and microphone input and establish a real-time call through WebRTC. That makes a separate meeting application optional for many conversations.',
+    sections: [
+      { title: 'What happens when you open the link', body: 'The browser loads the meeting interface, asks for media permission, and exchanges connection information with the other participant. Audio and video are encrypted in transit before they leave the browser.' },
+      { title: 'Why no-download calls are useful', body: 'Guests avoid installation prompts, software updates, and account creation. This is especially helpful for first-time client calls, support conversations, interviews, and quick meetings across organizations.' },
+      { title: 'What participants still need', body: 'Use a supported current browser, a stable network, and a working microphone. Mobile operating systems may pause media when the browser is placed in the background, so keep the call visible.' },
+      { title: 'When an installed tool may be better', body: 'Large events, managed recording, specialized virtual devices, and enterprise administration can justify dedicated software. For a focused call, a browser link often provides the shortest path to the conversation.' },
+    ],
   },
   'google-meet-alternative': {
-    title: 'Google Meet Alternative',
-    content: 'Looking for a simpler, more private alternative to Google Meet? See why TalkLink might be the perfect choice for your next meeting.'
+    title: 'A Simple Google Meet Alternative for Link-Based Calls',
+    summary: 'Google Meet is a broad meeting product connected to the Google ecosystem. TalkLink focuses on a narrower workflow: create a private room link and start a browser conversation quickly.',
+    sections: [
+      { title: 'When TalkLink is a useful alternative', body: 'Choose TalkLink for a quick one-to-one call, a small group meeting, or an external guest who should not need to sign in. The organizer can generate a link without creating a TalkLink account.' },
+      { title: 'Where a collaboration suite has advantages', body: 'Google Meet may be preferable when a team depends on Google Calendar scheduling, Workspace administration, managed recordings, live captions, or other integrated collaboration features.' },
+      { title: 'Compare privacy and access', body: 'For any platform, review who can open the invitation, whether recording is enabled, what account data is required, and how media is protected. TalkLink uses WebRTC encryption in transit and does not record calls.' },
+      { title: 'Pick the smallest tool that meets the need', body: 'A feature-rich suite is valuable for structured organizational workflows. A lightweight TalkLink room is useful when the priority is to get a small set of participants talking with minimal setup.' },
+    ],
   },
   'best-free-video-conferencing-tools': {
-    title: 'Best Free Video Conferencing Tools',
-    content: 'We list the best free tools for video calls in 2026. Focus on privacy, ease of use, and no-registration features.'
+    title: 'How to Evaluate Free Video Conferencing Tools',
+    summary: 'A free plan is useful only when its limits match the meeting. Compare the complete joining experience and operational constraints instead of choosing by the longest feature list.',
+    sections: [
+      { title: 'Check limits first', body: 'Confirm the maximum number of participants, meeting duration, screen-sharing support, mobile behavior, and whether the organizer or every guest needs an account. Limits and plan terms can change, so verify them on each provider’s official site.' },
+      { title: 'Count the cost of guest friction', body: 'An external client may value a simple browser link more than calendar integration. An internal team may prefer managed accounts, recurring meetings, recordings, and centralized administration.' },
+      { title: 'Review privacy behavior', body: 'Understand whether calls are recorded, how analytics are used, who can join from a link, and how media is encrypted. Organizers should still send private room links only to intended participants.' },
+      { title: 'Test before committing', body: 'Run a short call on the desktop and mobile devices your group uses. Check audio, camera permissions, screen sharing, weak-network behavior, and how easily a first-time guest can join.' },
+    ],
   },
   'changelog-last-3-months': {
     title: 'Обновления TalkLink: март–июнь 2026',
-    content: (
-      <div className="space-y-8">
-        <p>
-          Мы постоянно работаем над улучшением TalkLink, чтобы сделать ваши видеозвонки еще более качественными, безопасными и удобными. Вот краткий обзор основных изменений и новых функций, появившихся за последние три месяца.
-        </p>
-        
-        <section>
-          <h2 className="text-2xl font-bold text-white mb-4">Июнь 2026</h2>
-          <ul className="list-disc pl-6 space-y-2">
-            <li><strong>9 июня 2026:</strong> Запуск системы блога и специализированных SEO-лендингов. Теперь нас легче найти в поиске, а вы можете читать полезные статьи о видеосвязи.</li>
-            <li><strong>9 июня 2026:</strong> Масштабное обновление SEO: динамическая генерация sitemap.xml и оптимизация robots.txt для лучшей индексации.</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2 className="text-2xl font-bold text-white mb-4">Май 2026</h2>
-          <ul className="list-disc pl-6 space-y-2">
-            <li><strong>26 мая 2026:</strong> Групповые встречи (Meet). Добавлена возможность создания комнат для совместной работы нескольких участников.</li>
-            <li><strong>26 мая 2026:</strong> Обновление панели управления: новый UI, поддержка английского языка по умолчанию и усиленная безопасность административных эндпоинтов.</li>
-            <li><strong>20 мая 2026:</strong> Оптимизация WebRTC: внедрена атомарная регистрация участников, улучшена обработка очереди сообщений и стабильность соединения.</li>
-            <li><strong>20 мая 2026:</strong> Эффекты видео: добавлена функция размытия фона (Background Blur) для вашего комфорта и приватности.</li>
-            <li><strong>19 мая 2026:</strong> Интернационализация: полноценная поддержка русского и английского языков с автоматическим определением предпочтений пользователя.</li>
-            <li><strong>18 мая 2026:</strong> "Auto mute on blur": функция автоматического отключения звука при переключении на другую вкладку.</li>
-          </ul>
-        </section>
-
-        <section>
-          <h2 className="text-2xl font-bold text-white mb-4">Март 2026</h2>
-          <ul className="list-disc pl-6 space-y-2">
-            <li><strong>27 марта 2026:</strong> Глубокие ссылки (Deep Linking): улучшена интеграция с мобильными операционными системами iOS и Android.</li>
-            <li><strong>13 марта 2026:</strong> Динамические URL: гибкая настройка базовых адресов для ссылок на комнаты.</li>
-          </ul>
-        </section>
-
-        <p className="mt-8 italic">
-          Спасибо, что пользуетесь TalkLink! Мы продолжаем развиваться и готовим еще много интересного.
-        </p>
-      </div>
-    )
-  }
-};
+    summary: 'За этот период TalkLink получил групповые встречи, улучшения качества WebRTC-соединения, видеоэффекты и полноценную локализацию.',
+    sections: [
+      { title: 'Июнь 2026', body: 'Добавлены блог и тематические страницы о видеосвязи, обновлены sitemap.xml, robots.txt и метаданные публичных страниц.' },
+      { title: 'Май 2026', body: 'Появились групповые встречи, обновлённая панель управления, улучшения стабильности WebRTC, размытие фона, русская и английская локализации, а также автоматическое отключение микрофона при смене вкладки.' },
+      { title: 'Март 2026', body: 'Улучшены глубокие ссылки для iOS и Android и добавлена гибкая настройка базовых адресов комнат.' },
+    ],
+  },
+}
 
 export const BlogArticle: React.FC<{ slug?: string }> = ({ slug }) => {
-  const { t } = useTranslation()
-  
-  // If no slug, show list
+  useTranslation()
+
   if (!slug) {
     return (
       <div className="min-h-screen bg-[#020617] text-slate-200 font-sans">
@@ -106,12 +138,13 @@ export const BlogArticle: React.FC<{ slug?: string }> = ({ slug }) => {
           <LanguageSwitcher />
         </header>
         <main className="max-w-4xl mx-auto px-6 py-20">
-          <h1 className="text-5xl font-black mb-12 text-white">TalkLink Blog</h1>
+          <h1 className="text-5xl font-black mb-6 text-white">TalkLink Blog</h1>
+          <p className="mb-12 text-lg leading-relaxed text-slate-400">Practical guides about browser video calls, private meeting links, WebRTC security, remote work, and TalkLink product updates.</p>
           <div className="grid gap-8">
-            {Object.entries(BLOG_ARTICLES).map(([s, a]) => (
-              <a key={s} href={`/blog/${s}`} className="block p-8 bg-white/5 border border-white/10 rounded-3xl hover:border-blue-500/30 transition-all group">
-                <h2 className="text-2xl font-bold text-white mb-4 group-hover:text-blue-400">{a.title}</h2>
-                <p className="text-slate-400">Read more about {a.title.toLowerCase()}...</p>
+            {Object.entries(BLOG_ARTICLES).map(([articleSlug, article]) => (
+              <a key={articleSlug} href={`/blog/${articleSlug}`} className="block p-8 bg-white/5 border border-white/10 rounded-3xl hover:border-blue-500/30 transition-all group">
+                <h2 className="text-2xl font-bold text-white mb-4 group-hover:text-blue-400">{article.title}</h2>
+                <p className="text-slate-400 leading-relaxed">{article.summary}</p>
               </a>
             ))}
           </div>
@@ -126,26 +159,28 @@ export const BlogArticle: React.FC<{ slug?: string }> = ({ slug }) => {
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans">
       <header className="max-w-7xl mx-auto flex justify-between items-center px-6 py-8">
-        <a href="/blog" className="text-slate-400 hover:text-white flex items-center gap-2">
-          ← Back to Blog
-        </a>
+        <a href="/blog" className="text-slate-400 hover:text-white flex items-center gap-2">← Back to Blog</a>
         <LanguageSwitcher />
       </header>
       <main className="max-w-3xl mx-auto px-6 py-20">
-        <h1 className="text-4xl md:text-5xl font-black mb-8 text-white leading-tight">
-          {article.title}
-        </h1>
-        <div className="prose prose-invert prose-lg text-slate-400 leading-relaxed">
-          {article.content}
-          
-          <div className="mt-20 p-10 bg-gradient-to-br from-blue-600/20 to-emerald-600/20 border border-white/10 rounded-3xl text-center">
-            <h3 className="text-2xl font-bold text-white mb-4">Start your meeting now</h3>
-            <p className="mb-8">No registration, no downloads. Just private video calls.</p>
-            <a href="/" className="inline-block bg-white text-blue-900 px-8 py-4 rounded-2xl font-bold hover:bg-blue-50 transition-all">
-              Launch TalkLink
-            </a>
+        <article>
+          <h1 className="text-4xl md:text-5xl font-black mb-8 text-white leading-tight">{article.title}</h1>
+          <div className="prose prose-invert prose-lg text-slate-400 leading-relaxed">
+            <p className="text-xl">{article.summary}</p>
+            {article.sections.map((section) => (
+              <section key={section.title} className="mt-12">
+                <h2 className="text-2xl font-bold text-white mb-4">{section.title}</h2>
+                <p>{section.body}</p>
+              </section>
+            ))}
+
+            <div className="mt-20 p-10 bg-gradient-to-br from-blue-600/20 to-emerald-600/20 border border-white/10 rounded-3xl text-center">
+              <h2 className="text-2xl font-bold text-white mb-4">Start your meeting now</h2>
+              <p className="mb-8">No registration, no downloads. Just private video calls.</p>
+              <a href="/" className="inline-block bg-white text-blue-900 px-8 py-4 rounded-2xl font-bold hover:bg-blue-50 transition-all">Launch TalkLink</a>
+            </div>
           </div>
-        </div>
+        </article>
       </main>
     </div>
   )

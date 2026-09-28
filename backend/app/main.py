@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, HTMLResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, Response, HTMLResponse, PlainTextResponse, RedirectResponse
 from starlette.websockets import WebSocketState
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
@@ -942,9 +942,22 @@ async def catch_all(request: Request, path: str):
     # Ignore API and static files
     if path.startswith("api/") or path.startswith("ws/") or "." in path or path.startswith(".well-known/"):
         raise HTTPException(status_code=404)
-        
+
+    requested_path = f"/{path}"
+    if request.url.path != "/" and request.url.path.endswith("/"):
+        target = request.url.path.rstrip("/")
+        if request.url.query:
+            target = f"{target}?{request.url.query}"
+        return RedirectResponse(url=target, status_code=308)
+
+    # Returning the homepage with 200 for an unknown URL creates a soft 404 and
+    # wastes crawler time.  Only real public, admin and private-room routes are
+    # allowed to reach the SPA shell.
+    if not seo.is_supported_frontend_path(requested_path):
+        raise HTTPException(status_code=404)
+
     subdomain = seo.get_subdomain(request.headers.get("host", ""))
-    metadata = seo.generate_metadata(subdomain, f"/{path}", request.headers.get("host", ""))
+    metadata = seo.generate_metadata(subdomain, requested_path, request.headers.get("host", ""))
     
     # Path to index.html
     # In Docker: /usr/share/nginx/html/index.html
@@ -961,7 +974,7 @@ async def catch_all(request: Request, path: str):
         with open(index_path, "r", encoding="utf-8") as f:
             html = f.read()
         
-        html = seo.inject_metadata(html, metadata, f"/{path}", request.headers.get("host", ""))
+        html = seo.inject_metadata(html, metadata, requested_path, request.headers.get("host", ""))
         return html
     except Exception as e:
         logger.error(f"Failed to serve index.html: {type(e).__name__}")

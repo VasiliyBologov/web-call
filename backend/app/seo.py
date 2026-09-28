@@ -3,106 +3,56 @@ import json
 from html import escape
 from typing import Dict, Any
 
+from .seo_content import PUBLIC_PAGE_CONTENT, render_prerendered_content
 
+# Keep indexability, metadata, sitemap membership and server-rendered content
+# driven by the same registry.  Previously these were separate allowlists, so a
+# newly added public page could appear in one sitemap while receiving noindex
+# from another part of the backend.
 SEO_PAGE_METADATA = {
-    "/web-calls": {
-        "title": "Browser Web Calls Without Downloads | TalkLink",
-        "description": "Start a secure web call in your browser without registration or downloads. Create a private TalkLink room, share the link, and connect in seconds.",
-        "language": "en",
-        "og_locale": "en_US",
-    },
-    "/blog/changelog-last-3-months": {
-        "title": "Обновления TalkLink: март–июнь 2026",
-        "description": "Обзор обновлений TalkLink за март–июнь 2026 года: групповые встречи, размытие фона, локализация и улучшения WebRTC.",
-        "language": "ru",
-        "og_locale": "ru_RU",
-    },
+    path: {
+        "title": page["title"],
+        "description": page["description"],
+        "language": page.get("language", "en"),
+        "og_locale": page.get("og_locale", "en_US"),
+    }
+    for path, page in PUBLIC_PAGE_CONTENT.items()
 }
 
-
+_CONTENT_UPDATED = "2026-09-28"
+_PRIMARY_PATHS = {"/", "/call", "/meet", "/download", "/business"}
+_SECONDARY_PATHS = {"/privacy", "/blog"}
 SITEMAP_PAGES = [
-    {"path": "/", "lastmod": "2026-09-08", "priority": "1.0", "changefreq": "daily"},
-    {"path": "/call", "lastmod": "2026-06-09", "priority": "0.8", "changefreq": "weekly"},
-    {"path": "/meet", "lastmod": "2026-06-09", "priority": "0.8", "changefreq": "weekly"},
-    {"path": "/download", "lastmod": "2026-09-07", "priority": "0.9", "changefreq": "monthly"},
-    {"path": "/online-video-calls", "lastmod": "2026-06-09", "priority": "0.9", "changefreq": "monthly"},
-    {"path": "/web-calls", "lastmod": "2026-09-08", "priority": "0.9", "changefreq": "monthly"},
-    {"path": "/video-meetings", "lastmod": "2026-06-09", "priority": "0.9", "changefreq": "monthly"},
-    {"path": "/video-call-link", "lastmod": "2026-06-09", "priority": "0.9", "changefreq": "monthly"},
-    {"path": "/blog", "lastmod": "2026-06-09", "priority": "0.8", "changefreq": "weekly"},
-    {"path": "/blog/how-to-create-online-video-call-no-registration", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/best-browser-video-calling-tools", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/zoom-vs-browser-based-video-calls", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/how-secure-are-browser-video-meetings", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/how-to-create-meeting-link-in-seconds", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/online-meetings-for-remote-teams", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/video-calls-for-freelancers", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/video-calls-without-downloads", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/google-meet-alternative", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/best-free-video-conferencing-tools", "lastmod": "2026-06-09", "priority": "0.7", "changefreq": "monthly"},
-    {"path": "/blog/changelog-last-3-months", "lastmod": "2026-09-08", "priority": "0.7", "changefreq": "monthly"},
+    {
+        "path": path,
+        "lastmod": _CONTENT_UPDATED,
+        "priority": "1.0" if path == "/" else "0.9" if path in _PRIMARY_PATHS else "0.8" if path in _SECONDARY_PATHS else "0.7",
+        "changefreq": "weekly" if path in {"/", "/blog"} else "monthly",
+    }
+    for path in PUBLIC_PAGE_CONTENT
 ]
-
-
+INDEXABLE_PATHS = frozenset(page["path"] for page in SITEMAP_PAGES)
 PRERENDERED_CONTENT = {
-    "/": """
-<main id="seo-content">
-  <h1>Private video calls and web meetings with one link</h1>
-  <p>TalkLink creates instant browser-based video rooms without registration or software installation. Create a link, share it with your participants, and join from a desktop or mobile browser.</p>
-  <nav aria-label="TalkLink services">
-    <a href="/call">Start a video call</a>
-    <a href="/meet">Create a group meeting</a>
-    <a href="/web-calls">Learn about browser web calls</a>
-    <a href="/blog">Read the TalkLink blog</a>
-  </nav>
-</main>
-""",
-    "/web-calls": """
-<main id="seo-content">
-  <article>
-    <h1>Browser Web Calls Without Downloads</h1>
-    <p>TalkLink lets you start a private video call directly in a modern web browser. There is no account to create and no application to install: create a room, share its unique link, and allow camera and microphone access when you are ready to join.</p>
-    <h2>How to start a web call</h2>
-    <ol>
-      <li>Open TalkLink and choose a video call or group meeting.</li>
-      <li>Create a private room link and send it only to the people you want to invite.</li>
-      <li>Open the link in a supported browser and grant camera and microphone permission.</li>
-    </ol>
-    <h2>Why make calls in the browser?</h2>
-    <p>Browser-based calls remove installation and sign-up steps, which makes them useful for quick conversations with clients, friends, family, and remote teams. TalkLink uses WebRTC for real-time audio and video and protects media in transit using the encryption built into WebRTC.</p>
-    <h2>What you need</h2>
-    <p>You need a current browser, a stable internet connection, and permission to use your microphone and camera. Headphones can reduce echo in noisy rooms. Participants can join from desktop or mobile devices.</p>
-    <p><a href="/call">Start a private web call</a> or <a href="/meet">create a group meeting</a>.</p>
-  </article>
-</main>
-""",
-    "/blog/changelog-last-3-months": """
-<main id="seo-content">
-  <article>
-    <h1>Обновления TalkLink: март–июнь 2026</h1>
-    <p>За этот период TalkLink получил групповые встречи, улучшения качества WebRTC-соединения, видеоэффекты и полноценную локализацию. Ниже собраны основные изменения продукта.</p>
-    <h2>Июнь 2026</h2>
-    <ul>
-      <li><strong>9 июня:</strong> добавлены блог и тематические страницы о видеосвязи.</li>
-      <li><strong>9 июня:</strong> обновлены sitemap.xml, robots.txt и метаданные публичных страниц.</li>
-    </ul>
-    <h2>Май 2026</h2>
-    <ul>
-      <li><strong>26 мая:</strong> появились групповые встречи и обновлённая панель управления.</li>
-      <li><strong>20 мая:</strong> улучшена стабильность WebRTC и добавлено размытие фона.</li>
-      <li><strong>19 мая:</strong> добавлена поддержка русского и английского языков.</li>
-      <li><strong>18 мая:</strong> добавлено автоматическое отключение микрофона при смене вкладки.</li>
-    </ul>
-    <h2>Март 2026</h2>
-    <ul>
-      <li><strong>27 марта:</strong> улучшены глубокие ссылки для iOS и Android.</li>
-      <li><strong>13 марта:</strong> добавлена гибкая настройка адресов комнат.</li>
-    </ul>
-    <p><a href="/blog">Вернуться в блог TalkLink</a></p>
-  </article>
-</main>
-""",
+    path: render_prerendered_content(path)
+    for path in INDEXABLE_PATHS
 }
+
+
+def normalize_path(path: str) -> str:
+    """Return the canonical path form used by metadata and routing."""
+    normalized = path if path.startswith("/") else f"/{path}"
+    if len(normalized) > 1:
+        normalized = normalized.rstrip("/")
+    return normalized or "/"
+
+
+def is_supported_frontend_path(path: str) -> bool:
+    """Identify real SPA routes so unknown paths can return an actual 404."""
+    normalized = normalize_path(path)
+    if normalized in INDEXABLE_PATHS or normalized == "/admin":
+        return True
+    return re.fullmatch(r"/(?:r|m)/[^/]+", normalized) is not None
+
 
 def get_subdomain(host: str) -> str:
     """Extract subdomain from host."""
@@ -117,23 +67,20 @@ def get_subdomain(host: str) -> str:
         return parts[0]
     return ""
 
+
 def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     """Generate dynamic metadata based on subdomain and path."""
     tenant_name = subdomain.capitalize() if subdomain else "TalkLink"
     language = "en"
     og_locale = "en_US"
     
+    clean_path = normalize_path(path)
+
     if subdomain:
         title = f"Video Calls in {tenant_name} | Instant & Private"
         description = f"Join {tenant_name}'s private video communication portal. Instant WebRTC calls without registration or apps."
-    elif path == "/" or path == "":
-        title = "TalkLink - Online Video Calls and Web Meetings in Your Browser"
-        description = "Create secure online video calls and web meetings instantly. No downloads, no registration. Share a link and start talking."
-    elif path.rstrip("/") == "/download":
-        title = "Download TalkLink for iOS and Android"
-        description = "Download the TalkLink mobile app from the App Store or Google Play for private video calls and meetings."
-    elif path.rstrip("/") in SEO_PAGE_METADATA:
-        page_metadata = SEO_PAGE_METADATA[path.rstrip("/")]
+    elif clean_path in SEO_PAGE_METADATA:
+        page_metadata = SEO_PAGE_METADATA[clean_path]
         title = page_metadata["title"]
         description = page_metadata["description"]
         language = page_metadata["language"]
@@ -147,23 +94,13 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
     if clean_host.startswith("www."):
         clean_host = clean_host[4:]
     
-    # Normalize path: remove trailing slash for consistency (except root)
-    clean_path = path
-    if len(clean_path) > 1 and clean_path.endswith("/"):
-        clean_path = clean_path[:-1]
-
     # Use the actual host for canonical URL
     protocol = "https" # Assume https in production
     canonical_url = f"{protocol}://{clean_host}{clean_path}"
 
-    # Set noindex for temporary pages (rooms, meetings)
-    # We only want to index main landing pages and blog posts
-    noindex = False
-    static_paths = ["/", "/call", "/meet", "/download", "/online-video-calls", "/web-calls", "/video-meetings", "/video-call-link", "/blog"]
-    is_static = clean_path in static_paths or clean_path.startswith("/blog")
-    
-    if not is_static:
-        noindex = True
+    # Only exact URLs in the public registry are indexable.  Private rooms,
+    # admin pages and unknown blog slugs stay out of search results.
+    noindex = clean_path not in INDEXABLE_PATHS
 
     return {
         "title": title,
@@ -178,12 +115,18 @@ def generate_metadata(subdomain: str, path: str, host: str) -> Dict[str, Any]:
         "noindex": noindex
     }
 
+
 def get_robots_txt(subdomain: str, host: str) -> str:
     """Generate dynamic robots.txt."""
     protocol = "https"
+    clean_host = host.split(":")[0].lower()
+    if clean_host.startswith("www."):
+        clean_host = clean_host[4:]
     return f"""User-agent: *
 Allow: /
 Allow: /download
+Allow: /business
+Allow: /privacy
 Disallow: /api/
 Disallow: /admin/
 Disallow: /cabinet/
@@ -212,17 +155,21 @@ Allow: /
 User-agent: PerplexityBot
 Allow: /
 
-Sitemap: {protocol}://{host}/sitemap.xml
+Sitemap: {protocol}://{clean_host}/sitemap.xml
 """
 
 def get_sitemap_xml(subdomain: str, host: str) -> str:
     """Generate dynamic sitemap.xml."""
     protocol = "https"
 
+    clean_host = host.split(":")[0].lower()
+    if clean_host.startswith("www."):
+        clean_host = clean_host[4:]
+
     url_entries = []
     for page in SITEMAP_PAGES:
         url_entries.append(f"""    <url>
-        <loc>{protocol}://{host}{page['path']}</loc>
+        <loc>{protocol}://{clean_host}{page['path']}</loc>
         <lastmod>{page['lastmod']}</lastmod>
         <changefreq>{page['changefreq']}</changefreq>
         <priority>{page['priority']}</priority>
@@ -329,7 +276,7 @@ def generate_json_ld(subdomain: str, path: str, host: str, tenant_name: str) -> 
             "author": {"@type": "Organization", "name": "TASKMASTER, SRL"},
             "publisher": {"@type": "Organization", "name": "TASKMASTER, SRL"},
             "datePublished": "2026-06-09",
-            "dateModified": "2026-09-08" if path == "/blog/changelog-last-3-months" else "2026-06-09",
+            "dateModified": _CONTENT_UPDATED,
         })
 
     # Room/Call pages: Product schema
