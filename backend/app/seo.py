@@ -27,7 +27,7 @@ SITEMAP_PAGES = [
         "path": path,
         "lastmod": _CONTENT_UPDATED,
         "priority": "1.0" if path == "/" else "0.9" if path in _PRIMARY_PATHS else "0.8" if path in _SECONDARY_PATHS else "0.7",
-        "changefreq": "weekly" if path in {"/", "/blog"} else "monthly",
+        "changefreq": "weekly",
     }
     for path in PUBLIC_PAGE_CONTENT
 ]

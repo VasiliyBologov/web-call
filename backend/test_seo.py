@@ -79,6 +79,19 @@ def test_sitemap_uses_content_update_dates_instead_of_request_date():
     assert entries["https://talklink.space/blog/google-meet-alternative"] == "2026-09-28"
 
 
+def test_every_sitemap_page_uses_weekly_change_frequency():
+    sitemap = seo.get_sitemap_xml("", "talklink.space")
+    root = ElementTree.fromstring(sitemap)
+    namespace = {"sitemap": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    frequencies = [
+        node.text
+        for node in root.findall("sitemap:url/sitemap:changefreq", namespace)
+    ]
+
+    assert len(frequencies) == len(seo.SITEMAP_PAGES)
+    assert set(frequencies) == {"weekly"}
+
+
 def test_hreflang_is_not_advertised_without_language_specific_urls():
     html = '<html><head><title>Old</title><meta name="description" content="Old" /><link rel="canonical" href="https://talklink.space/" /></head><body><div id="root"></div></body></html>'
     metadata = seo.generate_metadata("", "/web-calls", "talklink.space")
