@@ -55,8 +55,10 @@ describe('privacy-safe analytics', () => {
     window.history.replaceState({}, '', '/r/private-room-token')
     initializeAnalytics()
 
+    const commands = window.dataLayer?.map(command => Array.from(command as ArrayLike<unknown>))
+
     expect(getAnalyticsPageLocation()).toBe(`${window.location.origin}/r/:token`)
-    expect(window.dataLayer).toEqual(expect.arrayContaining([
+    expect(commands).toEqual(expect.arrayContaining([
       expect.arrayContaining([
         'config',
         expect.any(String),
@@ -66,6 +68,7 @@ describe('privacy-safe analytics', () => {
         }),
       ]),
     ]))
+    expect(Object.prototype.toString.call(window.dataLayer?.[0])).toBe('[object Arguments]')
   })
 
   it('never includes a room token in funnel events', () => {
